@@ -20,6 +20,15 @@ npm run build      # 型チェック + dist/ に出力
 npm run preview    # ビルド結果の確認（API 付き）
 ```
 
+同じ LAN のスマホなどから開くとき（例：PC の IP が 192.168.0.60）：
+
+```sh
+npm run dev:lan     # http://192.168.0.60:5173 で開ける
+npm run build && npm run preview:lan   # 本番ビルドなら http://192.168.0.60:4173
+```
+
+http（非 https）だとブラウザによっては「共有」シートやクリップボードが使えず、コピー用の URL 欄が出ます（演出・音・地図は動きます）。
+
 ### Cloudflare Pages へのデプロイ
 
 静的フロント（`dist/`）＋ Pages Functions（`functions/api/resolve-map-url.ts`）の構成です。
