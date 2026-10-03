@@ -3,7 +3,7 @@ import { charLength, formatCoord, googleMapsSearchUrl, type Place } from '../lib
 import { SHOW } from '../show/config';
 import { Show, type Phase } from '../show/show';
 import { h, prefersReducedMotion, svg } from './dom';
-import { FINGER_SVG, GLOBE_SPINNER_SVG, PIN_SVG } from './icons';
+import { FINGER_SVG, GLOBE_SPINNER_SVG, PIN_SVG, POKE_SVG } from './icons';
 import { copyLink, shareLink } from './share';
 
 export interface ViewerOptions {
@@ -43,15 +43,12 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
   const mapEl = h('div', { class: 'viewer-map', 'aria-label': `${place.name} の地図`, role: 'region' });
   const canvas = h('canvas', { class: 'speedlines', 'aria-hidden': 'true' });
   const finger = h('div', { class: 'finger', 'aria-hidden': 'true' }, svg(FINGER_SVG));
-  const bubbleKoko = h('span', { class: 'bubble-koko' }, SHOW.lines.second);
-  const bubble = h('div', { class: 'bubble', 'aria-hidden': 'true' }, h('span', { class: 'bubble-soure' }, SHOW.lines.first), bubbleKoko);
-  // イベント名があれば、地球が回っている間に「○○の場所は…」と予告する（場所そのものはまだ明かさない）
-  const teaser = place.event
-    ? h('div', { class: 'teaser', 'aria-hidden': 'true' }, h('span', { class: 'teaser-event' }, `「${place.event}」`), h('span', {}, 'の場所は…'))
-    : null;
+  const callFirst = h('div', { class: 'bubble bubble-first', 'aria-hidden': 'true' }, SHOW.lines.first);
+  const callSecond = h('div', { class: 'bubble bubble-second', 'aria-hidden': 'true' }, SHOW.lines.second);
+  const poke = h('div', { class: 'poke', 'aria-hidden': 'true' }, svg(POKE_SVG));
   const sfx = SHOW.stages.map((s) => h('div', { class: 'sfx', 'aria-hidden': 'true' }, s.sfx));
   const babaan = h('div', { class: 'sfx sfx-babaan', 'aria-hidden': 'true' }, 'ババーン！');
-  const fx = h('div', { class: 'fx-layer' }, finger, bubble, ...sfx, babaan, teaser);
+  const fx = h('div', { class: 'fx-layer' }, ...sfx, poke, finger, callFirst, callSecond, babaan);
   const stage = h('div', { class: 'stage' }, mapEl, canvas, fx);
 
   const pinInner = h('div', { class: 'pin-inner' }, svg(PIN_SVG));
@@ -60,9 +57,8 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
 
   const card = h(
     'div',
-    { class: 'name-card', role: 'heading', 'aria-level': '1' },
-    h('div', { class: 'name-kicker' }, `${SHOW.lines.first}${SHOW.lines.second}`),
-    place.event ? h('div', { class: 'place-event' }, `🎉 ${place.event}`) : null,
+    { class: 'name-card', role: 'heading', 'aria-level': place.event ? '2' : '1' },
+    h('div', { class: 'name-kicker' }, `${SHOW.lines.first}…${SHOW.lines.second}`),
     h('div', { class: `place-name ${nameSizeClass(place.name)}` }, place.name),
     place.note ? h('div', { class: 'place-note' }, place.note) : null,
   );
@@ -117,7 +113,12 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
       ? h('button', { type: 'button', class: 'preview-close', onclick: () => opts.onClose?.() }, '✕ プレビューを閉じる')
       : null;
 
-  const viewer = h('div', { class: 'viewer', 'data-phase': 'loading' }, stage, loading, sheet, skipBtn, recenterBtn, closeBtn);
+  // イベント名は最初から最後まで上部タイトルとして出しておく
+  const eventTitle = place.event
+    ? h('header', { class: 'event-title' }, h('span', { class: 'event-title-icon', 'aria-hidden': 'true' }, '🎉'), h('h1', {}, place.event))
+    : null;
+
+  const viewer = h('div', { class: 'viewer', 'data-phase': 'loading' }, stage, loading, eventTitle, sheet, skipBtn, recenterBtn, closeBtn);
   root.append(viewer);
 
   // 演出前は結果UIを隠しておく
@@ -131,12 +132,14 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
     if (p === 'settled') updateRecenter();
   };
 
+  const getTopInset = () => (eventTitle ? eventTitle.offsetTop + eventTitle.offsetHeight + 10 : 12);
+
   const getPadding = () => {
-    const top = Math.min(80, viewer.clientHeight * 0.1);
+    const top = Math.max(Math.min(80, viewer.clientHeight * 0.1), getTopInset());
     // 横長の低い画面ではシートを右側に置く（CSS）。そのときは右側を空ける。
     const side = sheet.offsetWidth < viewer.clientWidth * 0.7;
     return side
-      ? { top: top * 0.5, bottom: 0, left: 0, right: sheet.offsetWidth }
+      ? { top: eventTitle ? top : top * 0.5, bottom: 0, left: 0, right: sheet.offsetWidth }
       : { top, bottom: sheet.offsetHeight + 8, left: 0, right: 0 };
   };
 
@@ -271,9 +274,9 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
     loading.remove();
     show = new Show(
       m,
-      { stage, canvas, finger, bubble, bubbleKoko, sfx, babaan, teaser, pin: pinInner, ring, card, actions, skip: skipBtn },
+      { stage, canvas, finger, callFirst, callSecond, poke, sfx, babaan, pin: pinInner, ring, card, actions, skip: skipBtn },
       place,
-      { reducedMotion: reduced, getPadding, onPhase: setPhase },
+      { reducedMotion: reduced, getPadding, getTopInset, onPhase: setPhase },
     );
     show.play();
     if (import.meta.env.DEV) (window as unknown as { __show?: Show }).__show = show;
@@ -286,9 +289,12 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
   window.addEventListener('resize', onResize);
   window.addEventListener('orientationchange', onResize);
   const ro = new ResizeObserver(() => {
+    viewer.style.setProperty('--sheet-h', `${sheet.offsetHeight}px`);
+    if (eventTitle) viewer.style.setProperty('--top-inset', `${getTopInset() - 6}px`);
     if (phase === 'settled') map?.setPadding(getPadding());
   });
   ro.observe(sheet);
+  if (eventTitle) ro.observe(eventTitle);
   cleanups.push(() => {
     window.removeEventListener('resize', onResize);
     window.removeEventListener('orientationchange', onResize);

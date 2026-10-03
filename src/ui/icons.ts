@@ -1,18 +1,52 @@
 /** 固定のSVG素材（ユーザー入力は含まない） */
 
-/** 白手袋の指差しアイコン。上向き、指先は (46, 6)。 */
+/** 白手袋の指差しアイコン（☝）。上向き、指先は (40.5, 6)。 */
 export const FINGER_SVG = `
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 112 196" width="112" height="196" aria-hidden="true">
-  <g stroke="#17142b" stroke-width="5" stroke-linejoin="round" stroke-linecap="round">
-    <path d="M22 150 h66 a7 7 0 0 1 7 7 v30 a7 7 0 0 1 -7 7 h-66 a7 7 0 0 1 -7 -7 v-30 a7 7 0 0 1 7 -7z" fill="#ffffff"/>
-    <path d="M17 163 h76 M17 176 h76" fill="none" stroke-width="3" stroke="#c9c3e6"/>
-    <path d="M28 82 c-10 0 -16 8 -16 18 v34 c0 11 8 18 18 18 h48 c13 0 22 -9 22 -22 v-28 c0 -12 -8 -20 -20 -20 z" fill="#ffffff"/>
-    <path d="M33 92 V18 c0 -8 6 -13 13 -13 s13 5 13 13 V92" fill="#ffffff"/>
-    <path d="M59 84 c13 -1 22 3 22 11 s-9 11 -22 10" fill="#ffffff"/>
-    <path d="M60 105 c14 -1 24 3 24 11 s-10 11 -23 10" fill="#ffffff"/>
-    <path d="M61 126 c12 -1 21 3 21 10 s-8 10 -20 9" fill="#ffffff"/>
-    <path d="M34 108 c-12 -2 -22 4 -22 13 c0 9 10 14 24 12 l12 -2" fill="#ffffff"/>
-    <path d="M40 30 v26" fill="none" stroke="#e4e0f5" stroke-width="4"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 200" width="120" height="200" aria-hidden="true">
+  <g stroke="#17142b" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
+    <!-- 袖口 -->
+    <path d="M32 156 L30 186 Q30 192 36 192 L82 192 Q88 192 88 186 L86 156 Z" fill="#ffffff"/>
+    <path d="M34 170 H84 M34 180 H85" fill="none" stroke="#d6d1ec" stroke-width="2.5"/>
+    <path d="M24 150 Q24 142 32 142 L88 142 Q96 142 96 150 L96 154 Q96 162 88 162 L32 162 Q24 162 24 154 Z" fill="#ffffff"/>
+    <!-- 手のシルエット（人差し指＋握りこぶし） -->
+    <path d="M27 21
+             C 27 12 33 6 40.5 6
+             C 48 6 54 12 54 21
+             L 55 72
+             C 62 69 68 69 72 71
+             C 86 68 101 73 100 88
+             C 102 97 99 103 95 106
+             C 101 112 101 123 93 127
+             C 98 134 95 144 85 146
+             L 40 148
+             C 26 148 18 139 18 126
+             L 18 104
+             C 18 93 22 86 27 82
+             Z" fill="#ffffff"/>
+    <!-- 陰（右側・下側） -->
+    <path d="M86 140 C 92 138 94 132 90 128 M96 120 C 98 114 97 110 94 107 M98 96 C 99 90 97 84 92 80" fill="none" stroke="#dcd7f0" stroke-width="4"/>
+    <path d="M49 22 L49.5 66" fill="none" stroke="#ebe8f8" stroke-width="5"/>
+    <!-- 曲げた指の境目 -->
+    <path d="M72 71 C 74 79 72 87 67 91" fill="none" stroke-width="3"/>
+    <path d="M95 106 C 85 109 76 108 68 104" fill="none" stroke-width="3"/>
+    <path d="M93 127 C 83 130 74 129 66 125" fill="none" stroke-width="3"/>
+    <!-- 親指（曲げた指の上を斜めに横切る） -->
+    <path d="M19 120 C 28 108 42 99 56 95 C 67 92 74 101 68 108 C 58 116 42 124 28 136" fill="#ffffff"/>
+    <path d="M58 99 C 63 98 66 101 64 104" fill="none" stroke="#b9b3d6" stroke-width="2.5"/>
+    <!-- 人差し指の関節 -->
+    <path d="M34 44 Q 40.5 47 47 44" fill="none" stroke="#a49ec4" stroke-width="2.5"/>
+    <path d="M34 50 Q 40.5 52 47 50" fill="none" stroke="#c6c1e0" stroke-width="2"/>
+  </g>
+</svg>`;
+
+/** 指先の「ビシッ」（指した瞬間の衝撃線）。中心が指先。 */
+export const POKE_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-50 -50 100 100" width="100" height="100" aria-hidden="true">
+  <g stroke="#ffd34d" stroke-width="6" stroke-linecap="round">
+    <path d="M0 -22 V-44"/><path d="M-19 -13 L-36 -26"/><path d="M19 -13 L36 -26"/><path d="M-22 4 L-42 8"/><path d="M22 4 L42 8"/>
+  </g>
+  <g stroke="#17142b" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.6">
+    <path d="M0 -22 V-44"/><path d="M-19 -13 L-36 -26"/><path d="M19 -13 L36 -26"/><path d="M-22 4 L-42 8"/><path d="M22 4 L42 8"/>
   </g>
 </svg>`;
 

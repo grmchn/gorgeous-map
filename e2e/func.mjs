@@ -26,6 +26,7 @@ const browser = await chromium.launch({ args: GL });
   const { ctx, page } = await newPage(browser);
   await page.goto(placeUrl());
   await page.waitForFunction(() => document.querySelector('.viewer')?.dataset.phase !== 'loading', null, { timeout: 30000 });
+  const titleAtStart = await page.isVisible('.event-title');
   const seen = await page.evaluate(() => new Promise((resolve) => {
     const phases = []; let frames = 0; const lngs = new Set(); const t0 = performance.now(); let maxGap = 0; let last = t0;
     const loop = () => {
@@ -42,8 +43,12 @@ const browser = await chromium.launch({ args: GL });
   const name = await page.textContent('.place-name');
   check('名前をテキストとして表示（HTML解釈しない）', name === '東京タワー&#🍣 <b>x</b>', name);
   check('補足表示', (await page.textContent('.place-note')) === '北側入口');
-  check('イベント名表示', (await page.textContent('.place-event')) === '🎉 佐藤さん送別会 & 二次会');
+  check('イベント名を上部タイトルに表示', (await page.textContent('.event-title h1')) === '佐藤さん送別会 & 二次会');
+  const titleBottom = await page.evaluate(() => document.querySelector('.event-title').getBoundingClientRect().bottom);
+  const pinTop = await page.evaluate(() => document.querySelector('.pin').getBoundingClientRect().top);
+  check('タイトルがピンを隠さない', pinTop > titleBottom, JSON.stringify({ titleBottom, pinTop }));
   check('globe 中に地球が回る（経度が変化）', seen.spun, '');
+  check('タイトルは演出の最初から表示', titleAtStart);
   const skipHidden = await page.isHidden('.skip');
   check('settled 後にスキップが消える', skipHidden);
   const gm = await page.getAttribute('a[href*="google.com/maps"]', 'href');

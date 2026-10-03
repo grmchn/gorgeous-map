@@ -22,13 +22,15 @@ export interface ShowElements {
   stage: HTMLElement;
   canvas: HTMLCanvasElement;
   finger: HTMLElement;
-  bubble: HTMLElement;
-  bubbleKoko: HTMLElement;
+  /** 「そぉ～れ」の吹き出し */
+  callFirst: HTMLElement;
+  /** 「ここぉ！」の吹き出し */
+  callSecond: HTMLElement;
+  /** 指先の衝撃線 */
+  poke: HTMLElement;
   sfx: HTMLElement[];
   /** 到着時の「ババーン！」 */
   babaan: HTMLElement;
-  /** イベント名の予告（「○○の場所は…」）。イベント名が無ければ null */
-  teaser: HTMLElement | null;
   /** ピン（Marker の内側要素。落下アニメはこれを動かす） */
   pin: HTMLElement;
   ring: HTMLElement;
@@ -41,11 +43,13 @@ export interface ShowOptions {
   reducedMotion: boolean;
   /** 結果画面で場所名カード等に隠れないための地図の余白 */
   getPadding: () => PaddingOptions;
+  /** 上部タイトル等を避けるための上端（px） */
+  getTopInset: () => number;
   onPhase?: (phase: Phase) => void;
 }
 
 /** 指アイコンの指先位置（要素左上からのpx）と向き */
-const FINGER_TIP = { x: 46, y: 6 };
+const FINGER_TIP = { x: 40.5, y: 6 };
 const FINGER_ANGLE = -32;
 
 /**
@@ -64,8 +68,10 @@ export class Show {
   private sizes = {
     w: 0,
     h: 0,
-    bubbleW: 220,
-    bubbleH: 90,
+    top: 12,
+    globeR: 140,
+    callFirst: { w: 180, h: 70 },
+    callSecond: { w: 180, h: 80 },
     sfx: [] as { w: number; h: number }[],
     babaan: { w: 160, h: 60 },
     card: { left: 0, top: 0, right: 0, bottom: 0 },
@@ -141,8 +147,11 @@ export class Show {
     const r = this.els.stage.getBoundingClientRect();
     this.sizes.w = r.width;
     this.sizes.h = r.height;
-    this.sizes.bubbleW = this.els.bubble.offsetWidth || 220;
-    this.sizes.bubbleH = this.els.bubble.offsetHeight || 90;
+    this.sizes.top = this.opts.getTopInset();
+    this.sizes.globeR = (Math.max(160, Math.min(r.width, r.height * 0.8)) * SHOW.globeDiameterRatio) / 2;
+    const { callFirst: a, callSecond: b } = this.els;
+    this.sizes.callFirst = { w: a.offsetWidth || 180, h: a.offsetHeight || 70 };
+    this.sizes.callSecond = { w: b.offsetWidth || 180, h: b.offsetHeight || 80 };
     this.sizes.sfx = this.els.sfx.map((el) => ({ w: el.offsetWidth || 120, h: el.offsetHeight || 60 }));
     this.sizes.babaan = { w: this.els.babaan.offsetWidth || 160, h: this.els.babaan.offsetHeight || 60 };
     // カードは拡大縮小アニメ中でも、レイアウト上の位置は変わらない
@@ -207,14 +216,14 @@ export class Show {
     const { w, h } = this.sizes;
 
     this.renderFinger(t, p.x, p.y);
-    this.renderBubble(t, p.x, p.y, w);
+    this.renderCalls(t, p.x, p.y, w);
+    this.renderPoke(t, p.x, p.y);
     this.renderSfx(t, p.x, p.y, w, h);
     this.renderSpeedLines(t, p.x, p.y);
     this.renderShake(t);
     this.renderPin(t);
     this.renderCard(t);
     this.renderBabaan(t);
-    this.renderTeaser(t);
     this.renderActions(t >= SHOW.settle.actionsIn ? progress(t, SHOW.settle.actionsIn, SHOW.settle.end) : 0);
   }
 
@@ -228,9 +237,10 @@ export class Show {
       padding: this.opts.getPadding(),
     });
     hide(this.els.finger);
-    hide(this.els.bubble);
+    hide(this.els.callFirst);
+    hide(this.els.callSecond);
+    hide(this.els.poke);
     hide(this.els.babaan);
-    if (this.els.teaser) hide(this.els.teaser);
     this.els.sfx.forEach(hide);
     this.lines?.clear();
     this.els.pin.style.opacity = '1';
@@ -306,42 +316,68 @@ export class Show {
       const k = easeInCubic(progress(t, exitStart, exitEnd));
       scale = 1 - 0.55 * k;
       opacity = 1 - k;
-    } else if (t >= SHOW.pause.start) {
-      // タメ：ほんのわずかに押し込む（静止に見える程度）
-      scale = 1 - 0.03 * easeOutCubic(progress(t, SHOW.pause.start, SHOW.pause.start + 200));
+    } else {
+      // 刺さった反動で一瞬つぶれ、タメの間はわずかに押し込んだまま静止
+      const hit = progress(t, arrive, arrive + 160);
+      scale = 1 - 0.08 * Math.sin(Math.PI * hit) - 0.03 * easeOutCubic(progress(t, SHOW.pause.start, SHOW.pause.start + 200));
     }
     el.style.visibility = 'visible';
     el.style.opacity = String(opacity);
     el.style.transform = `translate(${px - FINGER_TIP.x + dx}px, ${py - FINGER_TIP.y + dy}px) rotate(${FINGER_ANGLE}deg) scale(${scale})`;
   }
 
-  private renderBubble(t: number, px: number, py: number, w: number): void {
-    const el = this.els.bubble;
-    const { soure, koko, exit } = SHOW.bubble;
-    if (t < soure || t >= exit) return hide(el);
-    const { bubbleW: bw, bubbleH: bh } = this.sizes;
-    // 指（右下から来る）と重ならないよう、地点の上に置く。画面外にはみ出さない。
-    const x = Math.max(8, Math.min(w - bw - 8, px - bw * 0.42));
-    const y = Math.max(8, py - bh - 54);
-    let s = easeOutBack(progress(t, soure, soure + 140), 2.2);
-    let opacity = 1;
-    if (t >= SHOW.stages[0].start) {
-      const k = progress(t, SHOW.stages[0].start, exit);
-      s = 1 + 0.35 * k;
-      opacity = 1 - easeInCubic(k);
+  /** 吹き出し2つ：回り始めの「そぉ～れ」（地球の上）と、指した瞬間の「ここぉ！」（指先の左上） */
+  private renderCalls(t: number, px: number, py: number, w: number): void {
+    const exitStart = SHOW.stages[0].start;
+    const exitEnd = SHOW.bubbleExit;
+    const { top, globeR } = this.sizes;
+    const exitK = progress(t, exitStart, exitEnd);
+    const exitScale = 1 + 0.35 * exitK;
+    const exitOpacity = 1 - easeInCubic(exitK);
+
+    const a = this.els.callFirst;
+    const aIn = SHOW.callFirst.in;
+    if (t < aIn || t >= exitEnd) hide(a);
+    else {
+      const { w: aw, h: ah } = this.sizes.callFirst;
+      const x = Math.max(8, Math.min(w - aw - 8, px - aw * 0.6));
+      const y = Math.max(top, py - globeR - ah - 18);
+      // 回っている間は語尾を伸ばすようにゆらゆら。止まるときに収まる
+      const sway = 1 - progress(t, SHOW.globeIn.end - 250, SHOW.globeIn.end);
+      const rot = Math.sin((t - aIn) / 105) * 5 * sway;
+      const s = easeOutBack(progress(t, aIn, aIn + 170), 2.2) * exitScale;
+      a.style.visibility = 'visible';
+      a.style.opacity = String(exitOpacity);
+      a.style.transform = `translate(${x}px, ${y}px) rotate(${rot}deg) scale(${s})`;
+      a.style.setProperty('--tail-x', `${aw * 0.7}px`);
     }
+
+    const b = this.els.callSecond;
+    const bIn = SHOW.callSecond.in;
+    if (t < bIn || t >= exitEnd) hide(b);
+    else {
+      const { w: bw, h: bh } = this.sizes.callSecond;
+      // 指は右下から来るので、吹き出しは地点の左上。しっぽは地点を指す
+      // 飛び出し時の拡大で画面外に出ないよう、左右に少し余裕を取る
+      const x = Math.max(18, Math.min(w - bw - 18, px - bw * 0.82));
+      const y = Math.max(top, py - bh - 34);
+      const s = easeOutBack(progress(t, bIn, bIn + 180), 2) * exitScale;
+      b.style.visibility = 'visible';
+      b.style.opacity = String(exitOpacity);
+      b.style.transform = `translate(${x}px, ${y}px) rotate(-4deg) scale(${s})`;
+      b.style.setProperty('--tail-x', `${Math.max(22, Math.min(bw - 22, px - x))}px`);
+    }
+  }
+
+  /** 指が刺さった瞬間の「ビシッ」 */
+  private renderPoke(t: number, px: number, py: number): void {
+    const el = this.els.poke;
+    const a = SHOW.finger.arrive;
+    const k = progress(t, a, a + 340);
+    if (t < a || k >= 1) return hide(el);
     el.style.visibility = 'visible';
-    el.style.opacity = String(opacity);
-    el.style.transform = `translate(${x}px, ${y}px) scale(${s})`;
-    el.style.setProperty('--tail-x', `${Math.max(24, Math.min(bw - 24, px - x))}px`);
-    const kk = this.els.bubbleKoko;
-    if (t < koko) {
-      kk.style.opacity = '0';
-      kk.style.transform = 'scale(0.2)';
-    } else {
-      kk.style.opacity = '1';
-      kk.style.transform = `scale(${easeOutBack(progress(t, koko, koko + 160), 3)})`;
-    }
+    el.style.opacity = String(1 - easeInCubic(k));
+    el.style.transform = `translate(${px}px, ${py}px) translate(-50%, -50%) scale(${0.5 + 0.8 * easeOutCubic(k)})`;
   }
 
   private renderSfx(t: number, px: number, py: number, w: number, h: number): void {
@@ -360,8 +396,8 @@ export class Show {
       const { w: ew, h: eh } = this.sizes.sfx[i] ?? { w: 120, h: 60 };
       const minDim = Math.min(w, h);
       const x = Math.max(6, Math.min(w - ew - 6, px + pl.dx * minDim - ew / 2));
-      // 上端はスキップボタンと重ならないよう空ける
-      const y = Math.max(56, Math.min(h - eh - 6, py + pl.dy * minDim - eh / 2));
+      // 上端はイベント名タイトルと重ならないよう空ける
+      const y = Math.max(this.sizes.top, Math.min(h - eh - 6, py + pl.dy * minDim - eh / 2));
       const pop = easeOutBack(progress(t, a, a + 150), 2.5);
       const fade = 1 - easeInCubic(progress(t, b - 180, b));
       el.style.visibility = 'visible';
@@ -452,24 +488,12 @@ export class Show {
     if (t < a || t >= b) return hide(el);
     const { card, babaan, w } = this.sizes;
     const x = Math.max(6, Math.min(w - babaan.w - 6, card.right - babaan.w * 0.85));
-    const y = Math.max(56, card.top - babaan.h * 0.95);
+    const y = Math.max(this.sizes.top, card.top - babaan.h * 0.95);
     const pop = easeOutBack(progress(t, a, a + 180), 2.4);
     const fade = 1 - easeInCubic(progress(t, b - 250, b));
     el.style.visibility = 'visible';
     el.style.opacity = String(fade);
     el.style.transform = `translate(${x}px, ${y}px) rotate(8deg) scale(${0.3 + 0.7 * pop})`;
-  }
-
-  private renderTeaser(t: number): void {
-    const el = this.els.teaser;
-    if (!el) return;
-    const { start, end } = SHOW.teaser;
-    if (t < start || t >= end) return hide(el);
-    const k = easeOutBack(progress(t, start, start + 300), 1.8);
-    const fade = 1 - easeInCubic(progress(t, end - 250, end));
-    el.style.visibility = 'visible';
-    el.style.opacity = String(Math.min(clamp01(progress(t, start, start + 120)), fade));
-    el.style.transform = `translateX(-50%) scale(${0.6 + 0.4 * k})`;
   }
 
   private renderActions(k: number): void {
