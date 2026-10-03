@@ -55,7 +55,7 @@ export interface ShowOptions {
 }
 
 /** 指アイコンの指先位置（要素左上からのpx）と向き */
-const FINGER_TIP = { x: 4, y: 57 };
+const FINGER_TIP = { x: 4, y: 58 };
 /** 左向きの指を時計回りに傾け、右下から左上を指す */
 const FINGER_ANGLE = 28;
 

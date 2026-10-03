@@ -1,35 +1,47 @@
 /** 固定のSVG素材（ユーザー入力は含まない） */
 
 /**
- * 指差しアイコン（左向き・フラット）。ユーザー提供の見本の形を座標から写し取ったもの。
- * 表示サイズ 200×138、指先は要素左上から (4, 57) px。
+ * 指差しアイコン（左向き・フラット）。ユーザー提供の SVG。
+ * 表示サイズ 200×140、指先は要素左上から (4, 58) px。
+ * id は1ページに複数置いても衝突しないよう外している。
  */
 export const FINGER_SVG = `
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="14 90 470 324" width="200" height="138" aria-hidden="true">
-  <g stroke="#1b1b1b" stroke-width="16" stroke-linejoin="round" stroke-linecap="round" fill="#fbe2da">
-    <!-- 手の甲と親指 -->
-    <path d="M222 198
-             C 212 178 208 160 214 138
-             C 220 116 238 102 260 102
-             C 276 102 284 114 285 132
-             C 287 156 294 172 314 184
-             C 336 198 364 204 396 208
-             L 400 378
-             C 376 382 352 396 300 398
-             L 240 398 L 240 252 Z"/>
-    <!-- 人差し指（右端は手の甲に溶け込むので線を描かない） -->
-    <path d="M222 196 L 58 196 A 28 28 0 0 0 58 252 L 252 252" fill="#fbe2da"/>
-    <!-- 握った指（下から順に） -->
-    <rect x="160" y="346" width="128" height="50" rx="25"/>
-    <rect x="142" y="300" width="126" height="46" rx="23"/>
-    <rect x="128" y="252" width="126" height="48" rx="24"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="140" viewBox="10 82 480 336" aria-hidden="true">
+  <!-- Pure vector. Recolor the hand and cuff fills below. Each finger is a separate editable path. -->
+  <g fill="#F9DDD6" stroke="#101010" stroke-width="17" stroke-linecap="round" stroke-linejoin="round">
+    <path d="
+      M 214,191 H 61
+      C 43,191 29,205 29,222
+      C 29,239 43,253 61,253
+      H 229 L 194,400 H 264
+      C 326,400 365,387 400,365
+      L 400,217
+      C 354,204 320,203 295,181
+      C 282,169 277,154 273,131
+      C 270,113 269,101 257,101
+      C 241,101 230,106 222,116
+      C 208,133 207,160 214,191 Z"/>
+    <path d="
+      M 146,253 H 229
+      C 243,253 254,264 254,277
+      C 254,291 244,302 230,302
+      H 159 C 142,302 128,290 128,274
+      C 128,262 135,253 146,253 Z"/>
+    <path d="
+      M 160,302 H 244
+      C 258,302 268,313 268,326
+      C 268,339 258,350 244,350
+      H 176 C 157,350 142,338 142,321
+      C 142,310 149,302 160,302 Z"/>
+    <path d="
+      M 180,350 H 264
+      C 278,350 288,361 288,375
+      C 288,389 278,400 264,400
+      H 195 C 176,400 162,386 162,369
+      C 162,358 169,350 180,350 Z"/>
+    <path d="M 214,191 C 219,215 226,239 243,249 C 261,260 279,269 297,278" fill="none"/>
   </g>
-  <!-- 人差し指の塗りで手の甲側の線を隠す -->
-  <path d="M60 204 L 226 204 L 244 244 L 60 244 Z" fill="#fbe2da"/>
-  <!-- 親指の付け根から手のひらへのしわ -->
-  <path d="M222 198 C 230 228 244 252 262 262 C 276 270 288 276 298 284" fill="none" stroke="#1b1b1b" stroke-width="16" stroke-linecap="round"/>
-  <!-- 袖口 -->
-  <path d="M396 206 L 472 216 L 472 378 L 400 390 Z" fill="#ffffff" stroke="#1b1b1b" stroke-width="16" stroke-linejoin="round"/>
+  <path d="M 400,201 L 468,215 V 370 L 400,381 Z" fill="#FFFFFF" stroke="#101010" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>`;
 
 /** 指先の「ビシッ」（指した瞬間の衝撃線）。中心が指先。 */

@@ -149,8 +149,8 @@ textarea {
   left: 0;
   top: 0;
   width: 200px;
-  height: 138px;
-  transform-origin: 4px 57px;
+  height: 140px;
+  transform-origin: 4px 58px;
   visibility: hidden;
   filter: drop-shadow(5px 7px 0 rgba(0, 0, 0, 0.32));
   will-change: transform, opacity;
