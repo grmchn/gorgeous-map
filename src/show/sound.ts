@@ -91,7 +91,7 @@ export class ShowSound {
       comp.threshold.value = -14;
       comp.ratio.value = 6;
       const master = ctx.createGain();
-      master.gain.value = 0.75;
+      master.gain.value = 0.62;
       master.connect(comp);
       comp.connect(ctx.destination);
       const len = Math.floor(ctx.sampleRate * 1.5);
