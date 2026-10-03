@@ -13,6 +13,8 @@ import {
   shakeAt,
   spinEase,
 } from './easing';
+import { Fx } from './fx';
+import type { ShowSound } from './sound';
 import { SpeedLines } from './speedLines';
 
 export type Phase = 'loading' | 'globe' | 'pointing' | 'pause' | 'zooming' | 'arrival' | 'settled';
@@ -21,6 +23,9 @@ export interface ShowElements {
   /** 揺らす対象（地図・集中線・指などをまとめた箱） */
   stage: HTMLElement;
   canvas: HTMLCanvasElement;
+  /** 地図の後ろ（後光）と前（回転線・衝撃波・紙吹雪）のエフェクト用キャンバス */
+  bgCanvas: HTMLCanvasElement;
+  fxCanvas: HTMLCanvasElement;
   finger: HTMLElement;
   /** 「そぉ～れ」の吹き出し */
   callFirst: HTMLElement;
@@ -45,12 +50,16 @@ export interface ShowOptions {
   getPadding: () => PaddingOptions;
   /** 上部タイトル等を避けるための上端（px） */
   getTopInset: () => number;
+  /** BGM・効果音（音を出すかどうかは soundOn で判定） */
+  sound?: ShowSound;
+  soundOn?: () => boolean;
   onPhase?: (phase: Phase) => void;
 }
 
 /** 指アイコンの指先位置（要素左上からのpx）と向き */
-const FINGER_TIP = { x: 40.5, y: 6 };
-const FINGER_ANGLE = -32;
+const FINGER_TIP = { x: 6, y: 54 };
+/** 左向きの指を時計回りに傾け、右下から左上を指す */
+const FINGER_ANGLE = 35;
 
 /**
  * 演出の進行役。描画はすべて「経過時間 t の関数」として計算するので、
@@ -61,6 +70,7 @@ export class Show {
   private startAt = 0;
   private phase: Phase = 'loading';
   private lines: SpeedLines | null = null;
+  private fx: Fx;
   private destroyed = false;
   private finalT: number;
   private zoomList: number[];
@@ -85,6 +95,7 @@ export class Show {
   ) {
     this.finalT = opts.reducedMotion ? REDUCED.end : SHOW.total;
     this.zoomList = SHOW.stages.map((s) => s.zoom ?? place.zoom);
+    this.fx = new Fx(els.bgCanvas, els.fxCanvas);
     try {
       this.lines = new SpeedLines(els.canvas);
     } catch {
@@ -96,6 +107,21 @@ export class Show {
     return this.phase;
   }
 
+  /** 演出の経過時間（ms）。終了後は終端の時刻 */
+  get elapsed(): number {
+    if (this.phase === 'settled') return this.finalT;
+    return Math.min(this.finalT, performance.now() - this.startAt);
+  }
+
+  /** 演出の途中で音をオン／オフしたとき用：今の時刻から鳴らし直す */
+  syncSound(): void {
+    if (this.opts.soundOn?.() && this.phase !== 'settled') {
+      this.opts.sound?.play(this.elapsed, { reduced: this.opts.reducedMotion });
+    } else {
+      this.opts.sound?.stop();
+    }
+  }
+
   /** 最初から再生（再生中に呼んでも安全） */
   play(): void {
     if (this.destroyed) return;
@@ -104,6 +130,8 @@ export class Show {
     this.measure();
     this.startAt = performance.now();
     this.els.skip.hidden = false;
+    if (this.opts.soundOn?.()) this.opts.sound?.play(0, { reduced: this.opts.reducedMotion });
+    else this.opts.sound?.stop();
     const tick = () => {
       if (this.destroyed) return;
       const t = performance.now() - this.startAt;
@@ -119,6 +147,7 @@ export class Show {
   skip(): void {
     if (this.destroyed || this.phase === 'settled') return;
     cancelAnimationFrame(this.raf);
+    if (this.opts.soundOn?.()) this.opts.sound?.playFinale();
     this.render(this.finalT);
     this.finish();
   }
@@ -132,6 +161,7 @@ export class Show {
   destroy(): void {
     this.destroyed = true;
     cancelAnimationFrame(this.raf);
+    this.opts.sound?.stop();
   }
 
   /** サイズ変更・回転後に呼ぶ */
@@ -144,6 +174,7 @@ export class Show {
 
   private measure(): void {
     this.lines?.resize();
+    this.fx.resize();
     const r = this.els.stage.getBoundingClientRect();
     this.sizes.w = r.width;
     this.sizes.h = r.height;
@@ -166,6 +197,7 @@ export class Show {
     this.setPhase('settled');
     this.els.skip.hidden = true;
     this.lines?.clear();
+    this.fx.clear();
     this.els.stage.style.transform = '';
     this.setInteractive(true);
   }
@@ -213,13 +245,17 @@ export class Show {
     });
 
     const p = this.map.project([lng, lat]);
+    // 回転中は目的地が地球の表面を動くので、地球まわりの演出は「地球の中心」と「今の半径」を基準にする
+    const gc = this.map.project(this.map.getCenter());
+    const globeR = this.globeRadius(zoom);
     const { w, h } = this.sizes;
 
     this.renderFinger(t, p.x, p.y);
-    this.renderCalls(t, p.x, p.y, w);
+    this.renderCalls(t, p.x, p.y, w, gc.x, gc.y);
     this.renderPoke(t, p.x, p.y);
     this.renderSfx(t, p.x, p.y, w, h);
     this.renderSpeedLines(t, p.x, p.y);
+    this.fx.draw(t, p.x, p.y, gc.x, gc.y, globeR, t >= SHOW.arrival.start ? { x: p.x, y: p.y } : null);
     this.renderShake(t);
     this.renderPin(t);
     this.renderCard(t);
@@ -243,6 +279,7 @@ export class Show {
     hide(this.els.babaan);
     this.els.sfx.forEach(hide);
     this.lines?.clear();
+    this.fx.clear();
     this.els.pin.style.opacity = '1';
     this.els.pin.style.transform = '';
     this.els.ring.style.opacity = '0';
@@ -251,6 +288,12 @@ export class Show {
     this.els.card.style.transform = '';
     this.els.card.style.visibility = c > 0 ? 'visible' : 'hidden';
     this.renderActions(progress(t, REDUCED.actionsIn, REDUCED.end));
+  }
+
+  /** 倍率 zoom のときの地球の見た目の半径（px）。globeZoom() の逆算 */
+  private globeRadius(zoom: number): number {
+    const latAdj = Math.log2(Math.max(0.05, Math.cos((this.place.lat * Math.PI) / 180)));
+    return (256 * 2 ** (zoom - latAdj)) / Math.PI;
   }
 
   /** 画面短辺に対して地球がちょうどよい大きさになる倍率 */
@@ -308,8 +351,9 @@ export class Show {
     let opacity = 1;
     if (t < arrive) {
       const k = easeOutBack(progress(t, enter, arrive), 1.4);
-      dx = (1 - k) * 260;
-      dy = (1 - k) * 360;
+      // 手首の方向（右下）から飛び込んでくる
+      dx = (1 - k) * 330;
+      dy = (1 - k) * 230;
       opacity = clamp01(progress(t, enter, enter + 60));
     } else if (t >= exitStart) {
       // 指が地図へ「ズブッ」と押し込まれるように縮んで消える
@@ -327,7 +371,7 @@ export class Show {
   }
 
   /** 吹き出し2つ：回り始めの「そぉ～れ」（地球の上）と、指した瞬間の「ここぉ！」（指先の左上） */
-  private renderCalls(t: number, px: number, py: number, w: number): void {
+  private renderCalls(t: number, px: number, py: number, w: number, gx: number, gy: number): void {
     const exitStart = SHOW.stages[0].start;
     const exitEnd = SHOW.bubbleExit;
     const { top, globeR } = this.sizes;
@@ -336,19 +380,20 @@ export class Show {
     const exitOpacity = 1 - easeInCubic(exitK);
 
     const a = this.els.callFirst;
-    const aIn = SHOW.callFirst.in;
-    if (t < aIn || t >= exitEnd) hide(a);
+    const { in: aIn, out: aOut } = SHOW.callFirst;
+    if (t < aIn || t >= aOut) hide(a);
     else {
       const { w: aw, h: ah } = this.sizes.callFirst;
-      const x = Math.max(8, Math.min(w - aw - 8, px - aw * 0.6));
-      const y = Math.max(top, py - globeR - ah - 18);
-      // 回っている間は語尾を伸ばすようにゆらゆら。止まるときに収まる
-      const sway = 1 - progress(t, SHOW.globeIn.end - 250, SHOW.globeIn.end);
-      const rot = Math.sin((t - aIn) / 105) * 5 * sway;
-      const s = easeOutBack(progress(t, aIn, aIn + 170), 2.2) * exitScale;
+      // 地球の上（回転中は目的地が動くので地球の中心を基準にする）
+      const x = Math.max(8, Math.min(w - aw - 8, gx - aw * 0.6));
+      const y = Math.max(top, gy - globeR - ah - 18);
+      // 語尾を伸ばすようにゆらゆら揺れ、最後はふわっと上に抜けて消える
+      const rot = Math.sin((t - aIn) / 105) * 5;
+      const out = easeInCubic(progress(t, aOut - 200, aOut));
+      const s = easeOutBack(progress(t, aIn, aIn + 170), 2.2) * (1 - 0.25 * out);
       a.style.visibility = 'visible';
-      a.style.opacity = String(exitOpacity);
-      a.style.transform = `translate(${x}px, ${y}px) rotate(${rot}deg) scale(${s})`;
+      a.style.opacity = String(1 - out);
+      a.style.transform = `translate(${x}px, ${y - 24 * out}px) rotate(${rot}deg) scale(${s})`;
       a.style.setProperty('--tail-x', `${aw * 0.7}px`);
     }
 
@@ -487,7 +532,8 @@ export class Show {
     const b = SHOW.arrival.babaanEnd;
     if (t < a || t >= b) return hide(el);
     const { card, babaan, w } = this.sizes;
-    const x = Math.max(6, Math.min(w - babaan.w - 6, card.right - babaan.w * 0.85));
+    // 回転・拡大しても右端で切れないよう余裕を取る
+    const x = Math.max(6, Math.min(w - babaan.w * 1.12 - 6, card.right - babaan.w * 0.85));
     const y = Math.max(this.sizes.top, card.top - babaan.h * 0.95);
     const pop = easeOutBack(progress(t, a, a + 180), 2.4);
     const fade = 1 - easeInCubic(progress(t, b - 250, b));

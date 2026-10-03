@@ -17,8 +17,8 @@ export const SHOW = {
    * brakeAt: 一定速度で回る割合（残りでブレーキ）。overshoot: 止まるときの行き過ぎの強さ。
    */
   globeIn: { start: 0, end: SPIN_END, spinDeg: 900, tiltDeg: 18, zoomFrom: -1.1, brakeAt: 0.6, overshoot: 1.2 },
-  /** 「そぉ～れ」：回り始めと同時に出て、回っている間ゆらゆら揺れる */
-  callFirst: { in: 120 },
+  /** 「そぉ～れ」：回り始めと同時に出て、少し回ったところで消える（「ここぉ！」とは同時に出さない） */
+  callFirst: { in: 100, out: 850 },
   /** 地球が止まってから指が入り、地点を指す */
   finger: { enter: at(0), arrive: at(180) },
   /** 「ここぉ！」：指が刺さった瞬間 */

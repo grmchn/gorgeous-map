@@ -75,10 +75,15 @@ const browser = await chromium.launch({ args: GL });
   await ctx.close();
 }
 
-// 2. スキップ・再生連打・回転
+// 2. 音のオン／オフ・スキップ・再生連打・回転
 {
   const { ctx, page } = await newPage(browser);
   await page.goto(placeUrl());
+  await page.waitForFunction(() => document.querySelector('.viewer')?.dataset.phase === 'globe', null, { timeout: 30000 });
+  check('共有リンクは無音で開始（音を出すボタン）', (await page.textContent('.sound-btn')).includes('音を出す'));
+  await page.click('.sound-btn', { force: true }); // ぴょこぴょこ動くアニメ中なので force
+  await page.waitForTimeout(150);
+  check('タップで音が出る状態になる', (await page.textContent('.sound-btn')) === '🔊');
   await page.waitForFunction(() => document.querySelector('.viewer')?.dataset.phase === 'pointing', null, { timeout: 30000 });
   await page.click('.skip');
   await page.waitForTimeout(100);

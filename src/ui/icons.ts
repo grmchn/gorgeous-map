@@ -1,42 +1,34 @@
 /** 固定のSVG素材（ユーザー入力は含まない） */
 
-/** 白手袋の指差しアイコン（☝）。上向き、指先は (40.5, 6)。 */
+/**
+ * 指差しアイコン（左向き・フラット）。指先は要素左上から (6, 54) px。
+ * 太い線→塗りの順に重ねて、外形だけに輪郭が出るようにしている。
+ */
 export const FINGER_SVG = `
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 200" width="120" height="200" aria-hidden="true">
-  <g stroke="#17142b" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
-    <!-- 袖口 -->
-    <path d="M32 156 L30 186 Q30 192 36 192 L82 192 Q88 192 88 186 L86 156 Z" fill="#ffffff"/>
-    <path d="M34 170 H84 M34 180 H85" fill="none" stroke="#d6d1ec" stroke-width="2.5"/>
-    <path d="M24 150 Q24 142 32 142 L88 142 Q96 142 96 150 L96 154 Q96 162 88 162 L32 162 Q24 162 24 154 Z" fill="#ffffff"/>
-    <!-- 手のシルエット（人差し指＋握りこぶし） -->
-    <path d="M27 21
-             C 27 12 33 6 40.5 6
-             C 48 6 54 12 54 21
-             L 55 72
-             C 62 69 68 69 72 71
-             C 86 68 101 73 100 88
-             C 102 97 99 103 95 106
-             C 101 112 101 123 93 127
-             C 98 134 95 144 85 146
-             L 40 148
-             C 26 148 18 139 18 126
-             L 18 104
-             C 18 93 22 86 27 82
-             Z" fill="#ffffff"/>
-    <!-- 陰（右側・下側） -->
-    <path d="M86 140 C 92 138 94 132 90 128 M96 120 C 98 114 97 110 94 107 M98 96 C 99 90 97 84 92 80" fill="none" stroke="#dcd7f0" stroke-width="4"/>
-    <path d="M49 22 L49.5 66" fill="none" stroke="#ebe8f8" stroke-width="5"/>
-    <!-- 曲げた指の境目 -->
-    <path d="M72 71 C 74 79 72 87 67 91" fill="none" stroke-width="3"/>
-    <path d="M95 106 C 85 109 76 108 68 104" fill="none" stroke-width="3"/>
-    <path d="M93 127 C 83 130 74 129 66 125" fill="none" stroke-width="3"/>
-    <!-- 親指（曲げた指の上を斜めに横切る） -->
-    <path d="M19 120 C 28 108 42 99 56 95 C 67 92 74 101 68 108 C 58 116 42 124 28 136" fill="#ffffff"/>
-    <path d="M58 99 C 63 98 66 101 64 104" fill="none" stroke="#b9b3d6" stroke-width="2.5"/>
-    <!-- 人差し指の関節 -->
-    <path d="M34 44 Q 40.5 47 47 44" fill="none" stroke="#a49ec4" stroke-width="2.5"/>
-    <path d="M34 50 Q 40.5 52 47 50" fill="none" stroke="#c6c1e0" stroke-width="2"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="10 80 475 325" width="190" height="130" aria-hidden="true">
+  <!-- 1回目：太い線だけ（外形の輪郭になる） -->
+  <g fill="none" stroke="#1b1a1f" stroke-width="26" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M60 186 L214 186 C212 150 218 112 244 100 C266 90 286 104 286 128 C286 156 296 174 326 186 L398 198 L398 384 L282 390 L268 246 L60 246 A30 30 0 0 1 60 186 Z"/>
+    <rect x="130" y="246" width="160" height="56" rx="28"/>
+    <rect x="146" y="300" width="144" height="48" rx="24"/>
+    <rect x="166" y="346" width="124" height="44" rx="22"/>
   </g>
+  <!-- 2回目：塗りだけ（内側の線を消す） -->
+  <g fill="#fbe1d8">
+    <path d="M60 186 L214 186 C212 150 218 112 244 100 C266 90 286 104 286 128 C286 156 296 174 326 186 L398 198 L398 384 L282 390 L268 246 L60 246 A30 30 0 0 1 60 186 Z"/>
+    <rect x="130" y="246" width="160" height="56" rx="28"/>
+    <rect x="146" y="300" width="144" height="48" rx="24"/>
+    <rect x="166" y="346" width="124" height="44" rx="22"/>
+  </g>
+  <!-- 内側の線（指の境目・親指のしわ） -->
+  <g fill="none" stroke="#1b1a1f" stroke-width="13" stroke-linecap="round">
+    <path d="M146 246 L250 246"/>
+    <path d="M168 300 L274 300"/>
+    <path d="M186 346 L274 346"/>
+    <path d="M244 238 L302 270"/>
+  </g>
+  <!-- 袖口 -->
+  <path d="M394 200 L470 190 L472 386 L396 382 Z" fill="#ffffff" stroke="#1b1a1f" stroke-width="13" stroke-linejoin="round"/>
 </svg>`;
 
 /** 指先の「ビシッ」（指した瞬間の衝撃線）。中心が指先。 */
@@ -48,6 +40,12 @@ export const POKE_SVG = `
   <g stroke="#17142b" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.6">
     <path d="M0 -22 V-44"/><path d="M-19 -13 L-36 -26"/><path d="M19 -13 L36 -26"/><path d="M-22 4 L-42 8"/><path d="M22 4 L42 8"/>
   </g>
+</svg>`;
+
+/** 「ババーン！」の後ろの爆発形 */
+export const BURST_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 -2 124 84" class="burst" aria-hidden="true" preserveAspectRatio="none">
+  <polygon points="60.0,1.0 68.2,15.7 84.9,4.9 85.8,18.0 105.0,15.7 93.2,29.2 116.1,31.3 101.4,40.0 116.1,48.7 93.2,50.8 105.0,64.3 85.8,62.0 84.9,75.1 68.2,64.3 60.0,79.0 50.8,67.4 35.1,75.1 37.1,59.5 15.0,64.3 22.7,52.2 3.9,48.7 23.2,40.0 3.9,31.3 22.7,27.8 15.0,15.7 37.1,20.5 35.1,4.9 50.8,12.6" fill="#ff2d55" stroke="#17142b" stroke-width="3.5" stroke-linejoin="round"/>
 </svg>`;
 
 /** 到着ピン。下端中央が地点。 */

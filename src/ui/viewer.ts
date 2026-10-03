@@ -3,7 +3,8 @@ import { charLength, formatCoord, googleMapsSearchUrl, type Place } from '../lib
 import { SHOW } from '../show/config';
 import { Show, type Phase } from '../show/show';
 import { h, prefersReducedMotion, svg } from './dom';
-import { FINGER_SVG, GLOBE_SPINNER_SVG, PIN_SVG, POKE_SVG } from './icons';
+import { ShowSound } from '../show/sound';
+import { BURST_SVG, FINGER_SVG, GLOBE_SPINNER_SVG, PIN_SVG, POKE_SVG } from './icons';
 import { copyLink, shareLink } from './share';
 
 export interface ViewerOptions {
@@ -42,14 +43,16 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
   // ---- DOM ----
   const mapEl = h('div', { class: 'viewer-map', 'aria-label': `${place.name} の地図`, role: 'region' });
   const canvas = h('canvas', { class: 'speedlines', 'aria-hidden': 'true' });
+  const bgCanvas = h('canvas', { class: 'fx-canvas', 'aria-hidden': 'true' });
+  const fxCanvas = h('canvas', { class: 'fx-canvas', 'aria-hidden': 'true' });
   const finger = h('div', { class: 'finger', 'aria-hidden': 'true' }, svg(FINGER_SVG));
   const callFirst = h('div', { class: 'bubble bubble-first', 'aria-hidden': 'true' }, SHOW.lines.first);
   const callSecond = h('div', { class: 'bubble bubble-second', 'aria-hidden': 'true' }, SHOW.lines.second);
   const poke = h('div', { class: 'poke', 'aria-hidden': 'true' }, svg(POKE_SVG));
   const sfx = SHOW.stages.map((s) => h('div', { class: 'sfx', 'aria-hidden': 'true' }, s.sfx));
-  const babaan = h('div', { class: 'sfx sfx-babaan', 'aria-hidden': 'true' }, 'ババーン！');
+  const babaan = h('div', { class: 'sfx sfx-babaan', 'aria-hidden': 'true' }, svg(BURST_SVG), h('span', {}, 'ババーン！'));
   const fx = h('div', { class: 'fx-layer' }, ...sfx, poke, finger, callFirst, callSecond, babaan);
-  const stage = h('div', { class: 'stage' }, mapEl, canvas, fx);
+  const stage = h('div', { class: 'stage' }, bgCanvas, mapEl, canvas, fxCanvas, fx);
 
   const pinInner = h('div', { class: 'pin-inner' }, svg(PIN_SVG));
   const ring = h('div', { class: 'pin-ring', 'aria-hidden': 'true' });
@@ -97,6 +100,38 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
 
   const sheet = h('section', { class: 'sheet', 'aria-live': 'polite' }, card, actions);
   const skipBtn = h('button', { type: 'button', class: 'skip', hidden: true, onclick: () => show?.skip() }, 'スキップ ▶▶');
+
+  // ---- 音（BGM・効果音）----
+  // 自動再生制限があるので、共有リンクでは無音で始めて「音を出す」ボタンで鳴らす。
+  // プレビューはボタン操作の直後なので最初から鳴らせる。
+  const sound = new ShowSound();
+  const pref = readSoundPref();
+  let soundOn = false;
+  const soundBtn = h('button', { type: 'button', class: 'sound-btn', onclick: () => void toggleSound() });
+  const renderSoundBtn = () => {
+    soundBtn.textContent = soundOn ? '🔊' : '🔇 音を出す';
+    soundBtn.setAttribute('aria-label', soundOn ? '音を消す' : '音を出す');
+    soundBtn.classList.toggle('off', !soundOn);
+  };
+  async function toggleSound() {
+    if (soundOn) {
+      soundOn = false;
+      writeSoundPref('off');
+    } else {
+      soundOn = await sound.unlock();
+      if (soundOn) writeSoundPref('on');
+    }
+    renderSoundBtn();
+    show?.syncSound();
+  }
+  renderSoundBtn();
+  void sound.unlock().then((ok) => {
+    if (!alive) return;
+    soundOn = ok && (opts.mode === 'preview' ? pref !== 'off' : pref === 'on');
+    renderSoundBtn();
+    show?.syncSound();
+  });
+  const controls = h('div', { class: 'show-controls' }, soundBtn, skipBtn);
   const recenterBtn = h(
     'button',
     { type: 'button', class: 'recenter', hidden: true, onclick: () => recenter() },
@@ -118,7 +153,7 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
     ? h('header', { class: 'event-title' }, h('span', { class: 'event-title-icon', 'aria-hidden': 'true' }, '🎉'), h('h1', {}, place.event))
     : null;
 
-  const viewer = h('div', { class: 'viewer', 'data-phase': 'loading' }, stage, loading, eventTitle, sheet, skipBtn, recenterBtn, closeBtn);
+  const viewer = h('div', { class: 'viewer', 'data-phase': 'loading' }, stage, loading, eventTitle, sheet, controls, recenterBtn, closeBtn);
   root.append(viewer);
 
   // 演出前は結果UIを隠しておく
@@ -195,6 +230,8 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
     actions.style.pointerEvents = 'auto';
     actions.removeAttribute('inert');
     replayBtn.hidden = true;
+    soundBtn.hidden = true;
+    sound.stop();
     setPhase('settled');
   }
 
@@ -274,9 +311,9 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
     loading.remove();
     show = new Show(
       m,
-      { stage, canvas, finger, callFirst, callSecond, poke, sfx, babaan, pin: pinInner, ring, card, actions, skip: skipBtn },
+      { stage, canvas, bgCanvas, fxCanvas, finger, callFirst, callSecond, poke, sfx, babaan, pin: pinInner, ring, card, actions, skip: skipBtn },
       place,
-      { reducedMotion: reduced, getPadding, getTopInset, onPhase: setPhase },
+      { reducedMotion: reduced, getPadding, getTopInset, onPhase: setPhase, sound, soundOn: () => soundOn },
     );
     show.play();
     if (import.meta.env.DEV) (window as unknown as { __show?: Show }).__show = show;
@@ -311,6 +348,7 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
     destroy() {
       alive = false;
       show?.destroy();
+      sound.dispose();
       cleanups.forEach((f) => f());
       marker?.remove();
       try {
@@ -324,4 +362,24 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
       return phase;
     },
   };
+}
+
+const SOUND_KEY = 'gorgeous-map:sound';
+
+/** 音のオン／オフはこの閲覧者の端末だけの好み。読めない環境（プライベートモード等）では未設定扱い */
+function readSoundPref(): 'on' | 'off' | null {
+  try {
+    const v = localStorage.getItem(SOUND_KEY);
+    return v === 'on' || v === 'off' ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSoundPref(v: 'on' | 'off'): void {
+  try {
+    localStorage.setItem(SOUND_KEY, v);
+  } catch {
+    /* 保存できなくても動作には影響しない */
+  }
 }
