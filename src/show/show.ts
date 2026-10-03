@@ -33,7 +33,6 @@ export interface ShowElements {
   callSecond: HTMLElement;
   /** 指先の衝撃線 */
   poke: HTMLElement;
-  sfx: HTMLElement[];
   /** ピン（Marker の内側要素。落下アニメはこれを動かす） */
   pin: HTMLElement;
   ring: HTMLElement;
@@ -80,7 +79,6 @@ export class Show {
     globeR: 140,
     callFirst: { w: 180, h: 70 },
     callSecond: { w: 180, h: 80 },
-    sfx: [] as { w: number; h: number }[],
     card: { left: 0, top: 0, right: 0, bottom: 0 },
   };
 
@@ -180,7 +178,6 @@ export class Show {
     const { callFirst: a, callSecond: b } = this.els;
     this.sizes.callFirst = { w: a.offsetWidth || 180, h: a.offsetHeight || 70 };
     this.sizes.callSecond = { w: b.offsetWidth || 180, h: b.offsetHeight || 80 };
-    this.sizes.sfx = this.els.sfx.map((el) => ({ w: el.offsetWidth || 120, h: el.offsetHeight || 60 }));
     // カードは拡大縮小アニメ中でも、レイアウト上の位置は変わらない
     const prev = this.els.card.style.transform;
     this.els.card.style.transform = '';
@@ -244,12 +241,11 @@ export class Show {
     // 回転中は目的地が地球の表面を動くので、地球まわりの演出は「地球の中心」と「今の半径」を基準にする
     const gc = this.map.project(this.map.getCenter());
     const globeR = this.globeRadius(zoom);
-    const { w, h } = this.sizes;
+    const { w } = this.sizes;
 
     this.renderFinger(t, p.x, p.y);
     this.renderCalls(t, p.x, p.y, w, gc.x, gc.y);
     this.renderPoke(t, p.x, p.y);
-    this.renderSfx(t, p.x, p.y, w, h);
     this.renderSpeedLines(t, p.x, p.y);
     const c = this.sizes.card;
     this.fx.draw(t, p.x, p.y, gc.x, gc.y, globeR, t >= SHOW.arrival.start ? { x: p.x, y: p.y } : null, c);
@@ -272,7 +268,6 @@ export class Show {
     hide(this.els.callFirst);
     hide(this.els.callSecond);
     hide(this.els.poke);
-    this.els.sfx.forEach(hide);
     this.lines?.clear();
     this.fx.clear();
     this.els.pin.style.opacity = '1';
@@ -418,32 +413,6 @@ export class Show {
     el.style.visibility = 'visible';
     el.style.opacity = String(1 - easeInCubic(k));
     el.style.transform = `translate(${px}px, ${py}px) translate(-50%, -50%) scale(${0.5 + 0.8 * easeOutCubic(k)})`;
-  }
-
-  private renderSfx(t: number, px: number, py: number, w: number, h: number): void {
-    const placements = [
-      { dx: -0.3, dy: -0.22, rot: -14, size: 1 },
-      { dx: 0.26, dy: -0.18, rot: 11, size: 1.1 },
-      { dx: 0, dy: -0.27, rot: -6, size: 1.35 },
-    ];
-    SHOW.stages.forEach((s, i) => {
-      const el = this.els.sfx[i];
-      if (!el) return;
-      const a = s.start + s.move * 0.35;
-      const b = s.start + s.move + s.hold + 160;
-      if (t < a || t >= b) return hide(el);
-      const pl = placements[i];
-      const { w: ew, h: eh } = this.sizes.sfx[i] ?? { w: 120, h: 60 };
-      const minDim = Math.min(w, h);
-      const x = Math.max(6, Math.min(w - ew - 6, px + pl.dx * minDim - ew / 2));
-      // 上端はイベント名タイトルと重ならないよう空ける
-      const y = Math.max(this.sizes.top, Math.min(h - eh - 6, py + pl.dy * minDim - eh / 2));
-      const pop = easeOutBack(progress(t, a, a + 150), 2.5);
-      const fade = 1 - easeInCubic(progress(t, b - 180, b));
-      el.style.visibility = 'visible';
-      el.style.opacity = String(fade);
-      el.style.transform = `translate(${x}px, ${y}px) rotate(${pl.rot}deg) scale(${pl.size * (0.4 + 0.6 * pop)})`;
-    });
   }
 
   private renderSpeedLines(t: number, px: number, py: number): void {

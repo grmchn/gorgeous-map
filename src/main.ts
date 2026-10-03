@@ -9,7 +9,7 @@ const parsed = parsePlaceParams(window.location.search);
 
 if (parsed.kind === 'ok') {
   const { name, event } = parsed.place;
-  document.title = `${event ? `${event}｜` : ''}${name} | ゴージャス地図（仮）`;
+  document.title = `${event ? `${event}｜` : ''}${name} | ゴージャス✨マップ`;
   document.body.classList.add('mode-viewer');
   mountViewer(root, parsed.place, {
     mode: 'share',

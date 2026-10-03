@@ -49,8 +49,7 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
   const callFirst = h('div', { class: 'bubble bubble-first', 'aria-hidden': 'true' }, SHOW.lines.first);
   const callSecond = h('div', { class: 'bubble bubble-second', 'aria-hidden': 'true' }, SHOW.lines.second);
   const poke = h('div', { class: 'poke', 'aria-hidden': 'true' }, svg(POKE_SVG));
-  const sfx = SHOW.stages.map((s) => h('div', { class: 'sfx', 'aria-hidden': 'true' }, s.sfx));
-  const fx = h('div', { class: 'fx-layer' }, ...sfx, poke, finger, callFirst, callSecond);
+  const fx = h('div', { class: 'fx-layer' }, poke, finger, callFirst, callSecond);
   const stage = h('div', { class: 'stage' }, bgCanvas, mapEl, canvas, fxCanvas, fx);
 
   const pinInner = h('div', { class: 'pin-inner' }, svg(PIN_SVG));
@@ -101,8 +100,9 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
   const skipBtn = h('button', { type: 'button', class: 'skip', hidden: true, onclick: () => show?.skip() }, 'スキップ ▶▶');
 
   // ---- 音（BGM・効果音）----
-  // 自動再生制限があるので、共有リンクでは無音で始めて「音を出す」ボタンで鳴らす。
-  // プレビューはボタン操作の直後なので最初から鳴らせる。
+  // 既定は音あり。ただしブラウザの自動再生制限で、操作前は鳴らせないことが多い。
+  // その場合は画面のどこかを最初にタップ（またはキー入力）した瞬間から、演出の途中でも鳴らし始める。
+  // 一度「音を消す」にした端末では鳴らさない。
   const sound = new ShowSound();
   const pref = readSoundPref();
   let soundOn = false;
@@ -126,9 +126,24 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
   renderSoundBtn();
   void sound.unlock().then((ok) => {
     if (!alive) return;
-    soundOn = ok && (opts.mode === 'preview' ? pref !== 'off' : pref === 'on');
+    soundOn = ok && pref !== 'off';
     renderSoundBtn();
     show?.syncSound();
+  });
+  const unlockOnFirstGesture = (e: Event) => {
+    // 音ボタン自体の操作は toggleSound に任せる（二重に切り替わらないように）
+    if (soundOn || readSoundPref() === 'off' || soundBtn.contains(e.target as Node)) return;
+    void sound.unlock().then((ok) => {
+      if (!alive || !ok || soundOn) return;
+      soundOn = true;
+      renderSoundBtn();
+      show?.syncSound();
+    });
+  };
+  const gestureEvents = ['pointerdown', 'touchend', 'keydown'] as const;
+  for (const ev of gestureEvents) document.addEventListener(ev, unlockOnFirstGesture, { capture: true });
+  cleanups.push(() => {
+    for (const ev of gestureEvents) document.removeEventListener(ev, unlockOnFirstGesture, { capture: true });
   });
   const controls = h('div', { class: 'show-controls' }, soundBtn, skipBtn);
   const recenterBtn = h(
@@ -149,7 +164,7 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
 
   // イベント名は最初から最後まで上部タイトルとして出しておく
   const eventTitle = place.event
-    ? h('header', { class: 'event-title' }, h('span', { class: 'event-title-icon', 'aria-hidden': 'true' }, '🎉'), h('h1', {}, place.event))
+    ? h('header', { class: 'event-title' }, h('div', { class: 'ribbon-wrap' }, h('div', { class: 'ribbon' }, h('span', { class: 'event-title-icon', 'aria-hidden': 'true' }, '🥳'), h('h1', {}, place.event))))
     : null;
 
   const viewer = h('div', { class: 'viewer', 'data-phase': 'loading' }, stage, loading, eventTitle, sheet, controls, recenterBtn, closeBtn);
@@ -272,6 +287,9 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
         attributionControl: false,
         interactive: true,
         cancelPendingTileRequestsWhileZooming: false,
+        // 先読みした最終画面・途中段のタイルを演出中に捨てないよう、キャッシュを大きめに
+        maxTileCacheSize: 1200,
+        maxTileCacheZoomLevels: 20,
         maxPitch: 0,
         dragRotate: false,
         pitchWithRotate: false,
@@ -281,6 +299,7 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
     }
     map = m;
     m.addControl(new maplibregl.AttributionControl({ compact: true }), 'top-left');
+    mod.installPoiIcons(m);
     for (const hdl of [m.dragPan, m.scrollZoom, m.boxZoom, m.doubleClickZoom, m.keyboard, m.touchZoomRotate]) hdl.disable();
     m.on('webglcontextlost', () => showFallback('地図の表示が中断されました。'));
     m.on('moveend', updateRecenter);
@@ -307,10 +326,22 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
     if (!alive) return;
     if (!ok) return showFallback('地図を読み込めませんでした。通信状況を確認してください。');
 
+    // 最終画面（と途中の街レベル）を先に描いておく。タイルの取得だけでなく解析・文字の準備まで
+    // 済ませた状態でキャッシュに残るので、演出の最後で地図が遅れて出るのを防げる。
+    // 結果がネタバレしないよう、その間は地図を見えなくしておく。
+    mapEl.style.opacity = '0';
+    const views = reduced ? [place.zoom] : [place.zoom, SHOW.stages[1].zoom ?? 10];
+    for (const zoom of views) {
+      m.jumpTo({ center: [place.lng, place.lat], zoom, bearing: 0, pitch: 0, padding: getPadding() });
+      await waitForIdle(m, zoom === place.zoom ? 6000 : 3000);
+      if (!alive) return;
+    }
+    mapEl.style.opacity = '';
+
     loading.remove();
     show = new Show(
       m,
-      { stage, canvas, bgCanvas, fxCanvas, finger, callFirst, callSecond, poke, sfx, pin: pinInner, ring, card, actions, skip: skipBtn },
+      { stage, canvas, bgCanvas, fxCanvas, finger, callFirst, callSecond, poke, pin: pinInner, ring, card, actions, skip: skipBtn },
       place,
       { reducedMotion: reduced, getPadding, getTopInset, onPhase: setPhase, sound, soundOn: () => soundOn },
     );
@@ -381,4 +412,18 @@ function writeSoundPref(v: 'on' | 'off'): void {
   } catch {
     /* 保存できなくても動作には影響しない */
   }
+}
+
+/** 地図が描き終わる（タイルの読み込み・解析が済む）まで待つ。時間切れでも先に進む */
+function waitForIdle(map: MlMap, timeoutMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = window.setTimeout(done, timeoutMs);
+    function done() {
+      clearTimeout(timer);
+      map.off('idle', done);
+      resolve();
+    }
+    map.once('idle', done);
+    map.triggerRepaint();
+  });
 }

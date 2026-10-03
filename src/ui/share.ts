@@ -2,7 +2,7 @@ import type { Place } from '../lib/place';
 import { h, toast } from './dom';
 
 export function shareText(place: Place): string {
-  return place.event ? `🎉「${place.event}」の場所は…📍「${place.name}」！` : `📍「${place.name}」はここ！`;
+  return place.event ? `🥳「${place.event}」の場所は…📍「${place.name}」！` : `📍「${place.name}」はここ！`;
 }
 
 export async function copyText(text: string): Promise<boolean> {

@@ -102,8 +102,7 @@ export function mountEditor(root: HTMLElement): void {
       'header',
       { class: 'hero' },
       h('div', { class: 'hero-globe', 'aria-hidden': 'true' }, '🌏', h('span', { class: 'hero-finger' }, '👉')),
-      h('h1', {}, 'ゴージャス地図', h('small', {}, '（仮）')),
-      h('p', { class: 'tagline' }, '場所の共有を、地球規模で大げさに。'),
+      h('h1', {}, 'ゴージャス', h('span', { class: 'hero-sparkle', 'aria-hidden': 'true' }, '✨'), 'マップ'),
     ),
     h(
       'section',
@@ -239,6 +238,7 @@ export function mountEditor(root: HTMLElement): void {
       cooperativeGestures: false,
     });
     m.touchZoomRotate.disableRotation();
+    mod.installPoiIcons(m);
     m.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
     const el = h('div', { class: 'pin editor-pin' }, h('div', { class: 'pin-inner' }, svg(PIN_SVG)));
     const mk = new maplibregl.Marker({ element: el, anchor: 'bottom', draggable: true });

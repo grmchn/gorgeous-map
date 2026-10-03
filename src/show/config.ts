@@ -28,14 +28,14 @@ export const SHOW = {
   /** タメ（指したまま静止） */
   pause: { start: at(420), end: at(900) },
   /**
-   * 3段階ズーム「ズン、ズン、ズーン」。
+   * 3段階ズーム「ズン、ズン、ズーン」（文字は出さず、集中線・衝撃波・揺れ・効果音で表現）。
    * zoom は絶対値。最後の段（null）は最終倍率へ。
    * move: 急加速して寄る時間、hold: 次の段までの短い間。
    */
   stages: [
-    { start: at(900), move: 400, hold: 170, zoom: 4.6, sfx: 'ズン！', shake: 5, bearing: 0 },
-    { start: at(1470), move: 400, hold: 170, zoom: 10.2, sfx: 'ズン！', shake: 7, bearing: 0 },
-    { start: at(2040), move: 760, hold: 150, zoom: null, sfx: 'ズーーン！！', shake: 11, bearing: 14 },
+    { start: at(900), move: 400, hold: 170, zoom: 4.6, shake: 5, bearing: 0 },
+    { start: at(1470), move: 400, hold: 170, zoom: 10.2, shake: 7, bearing: 0 },
+    { start: at(2040), move: 760, hold: 150, zoom: null, shake: 11, bearing: 14 },
   ],
   /**
    * 到着（ピン着地・場所名の着地）。文字は出さず、cardStart の「バ」と cardBang の「バーン」を

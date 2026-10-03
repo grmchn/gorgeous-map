@@ -1,11 +1,12 @@
 import * as maplibregl from 'maplibre-gl';
 import type { StyleSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import { buildGoogleLikeStyle, flattenBuildings, installPoiIcons } from './googleStyle';
 import workerUrl from './maplibreWorker?worker&url';
 
 maplibregl.setWorkerUrl(workerUrl);
 
-export { maplibregl };
+export { installPoiIcons, maplibregl };
 
 /**
  * 地図スタイル（タイル配信元）。既定は OpenFreeMap（キー不要・OpenStreetMap データ）。
@@ -54,7 +55,10 @@ let stylePromise: Promise<StyleSpecification> | null = null;
 export function loadStyle(timeoutMs = 10000): Promise<StyleSpecification> {
   stylePromise ??= fetchJson<StyleSpecification>(MAP_STYLE_URL, timeoutMs)
     .then((s) => {
-      const style = preferJapaneseLabels(structuredClone(s));
+      // 既定は Google マップ風の自前レイヤー（平面・色分け）。配信元の見た目をそのまま使いたいときは
+      // VITE_MAP_LOOK=original。OpenMapTiles 以外のスタイルでも元の見た目（建物は平面化）になる。
+      const google = import.meta.env.VITE_MAP_LOOK === 'original' ? null : buildGoogleLikeStyle(s);
+      const style = google ?? flattenBuildings(preferJapaneseLabels(structuredClone(s)));
       // 球体表示時の大気。寄るにつれて消す。
       style.sky = {
         'sky-color': '#0b1440',

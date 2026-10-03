@@ -89,32 +89,69 @@ export class Fx {
     ctx.restore();
   }
 
-  /** 地球の左右に出るマンガの回転線（回転が速いほど濃い） */
+  /**
+   * 地球の回転エフェクト（回転が速いほど強い）
+   * - 地球の手前を横切る、先が太く尾が細い流線（緯線に沿った楕円弧。回転方向に流れる）
+   * - 地球の外周をなでる光の弧（加算合成でふわっと光る）
+   * - 縁のハイライト（リムライト）
+   */
   private drawSpinArcs(t: number, cx: number, cy: number, r: number): void {
     const g = SHOW.globeIn;
-    if (t <= g.start || t >= g.end) return;
+    if (t <= g.start || t >= g.end + 120) return;
     const p = progress(t, g.start, g.end);
     const e = 0.004;
-    const speed = (spinEase(Math.min(1, p + e), g.brakeAt, g.overshoot) - spinEase(Math.max(0, p - e), g.brakeAt, g.overshoot)) / (2 * e);
-    const k = clamp01(speed / 1.6) * progress(t, 0, 200);
+    const speed =
+      (spinEase(Math.min(1, p + e), g.brakeAt, g.overshoot) - spinEase(Math.max(0, p - e), g.brakeAt, g.overshoot)) / (2 * e);
+    const k = clamp01(speed / 1.6) * progress(t, 0, 180);
     if (k <= 0.02) return;
     const { ctx } = this.fg.begin();
-    const rnd = seeded(Math.floor(t / 60) + 3);
+    const spinAngle = spinEase(p, g.brakeAt, g.overshoot) * ((SHOW.globeIn.spinDeg * Math.PI) / 180);
     ctx.save();
     ctx.translate(cx, cy);
-    ctx.lineCap = 'round';
-    for (const side of [-1, 1]) {
-      for (let i = 0; i < 4; i++) {
-        const rr = r * (1.08 + i * 0.09 + rnd() * 0.03);
-        const span = 0.35 + 0.35 * rnd();
-        const mid = (side > 0 ? 0 : Math.PI) + (rnd() - 0.5) * 0.5;
-        ctx.beginPath();
-        // 楕円にして「横回転」に見せる
-        ctx.ellipse(0, 0, rr, rr * 0.92, 0, mid - span, mid + span);
-        ctx.strokeStyle = `rgba(255, 255, 255, ${k * (0.85 - i * 0.15)})`;
-        ctx.lineWidth = (5 - i) * (0.6 + 0.6 * k);
-        ctx.stroke();
+
+    // 1) 縁のリムライト
+    const rim = ctx.createRadialGradient(0, 0, r * 0.86, 0, 0, r * 1.18);
+    rim.addColorStop(0, 'rgba(160, 210, 255, 0)');
+    rim.addColorStop(0.55, `rgba(180, 225, 255, ${0.55 * k})`);
+    rim.addColorStop(1, 'rgba(180, 225, 255, 0)');
+    ctx.fillStyle = rim;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 1.18, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.globalCompositeOperation = 'lighter';
+    // 2) 外周をなでる光の弧（左右）。地球と一緒に回る位相で流れる
+    for (let i = 0; i < 6; i++) {
+      const rr = r * (1.07 + i * 0.065);
+      const phase = spinAngle * (0.9 + i * 0.07) + i * 1.3;
+      for (const side of [0, Math.PI]) {
+        const mid = side + Math.sin(phase) * 0.35;
+        const span = (0.55 + 0.25 * Math.sin(phase * 1.7 + i)) * (0.6 + 0.4 * k);
+        taperedArc(ctx, 0, 0, rr, rr * 0.97, mid - span, mid + span, (6 - i * 0.7) * (0.5 + 0.7 * k), `rgba(200, 235, 255, ${0.5 * k * (1 - i * 0.12)})`, side === 0);
       }
+    }
+    ctx.globalCompositeOperation = 'source-over';
+
+    // 3) 地球の手前を横切る流線（緯線に沿った楕円の手前半分）。右から左へ流れる
+    const rnd = seeded(5);
+    for (let i = 0; i < 9; i++) {
+      const lat = (rnd() - 0.5) * 1.5; // -0.75..0.75 rad
+      const y = Math.sin(lat) * r;
+      const rx = Math.cos(lat) * r * 1.02;
+      const ry = rx * 0.16;
+      const len = 0.45 + 0.5 * rnd();
+      const speedMul = 0.8 + 0.6 * rnd();
+      const head = Math.PI - (((spinAngle * speedMul + rnd() * 6.3) % (Math.PI + len)) - len * 0.5);
+      const a0 = Math.max(0.05, head - len);
+      const a1 = Math.min(Math.PI - 0.05, head);
+      if (a1 <= a0) continue;
+      const wid = (3 + 3 * rnd()) * (0.4 + 0.8 * k);
+      ctx.save();
+      ctx.translate(0, y);
+      // 白い陸の上でも見えるよう、薄い紺の縁を付けてから白を重ねる
+      taperedArc(ctx, 0, 0, rx, ry, a0, a1, wid + 3, `rgba(20, 40, 120, ${0.3 * k})`, false);
+      taperedArc(ctx, 0, 0, rx, ry, a0, a1, wid, `rgba(255, 255, 255, ${0.9 * k})`, false);
+      ctx.restore();
     }
     ctx.restore();
   }
@@ -290,6 +327,47 @@ function sparkle(ctx: CanvasRenderingContext2D, x: number, y: number, r: number)
   ctx.quadraticCurveTo(x, y, x, y + r);
   ctx.quadraticCurveTo(x, y, x - r, y);
   ctx.quadraticCurveTo(x, y, x, y - r);
+  ctx.fill();
+}
+
+/**
+ * 先が太く尾が細い弧（楕円）を塗る。headAtStart=true なら a0 側が頭。
+ */
+function taperedArc(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  rx: number,
+  ry: number,
+  a0: number,
+  a1: number,
+  width: number,
+  color: string,
+  headAtStart: boolean,
+): void {
+  const n = 28;
+  const outer: [number, number][] = [];
+  const inner: [number, number][] = [];
+  for (let i = 0; i <= n; i++) {
+    const s = i / n;
+    const a = a0 + (a1 - a0) * s;
+    const u = headAtStart ? 1 - s : s; // 頭側で 1
+    const wHalf = (width / 2) * Math.pow(Math.sin(Math.PI * Math.min(1, u * 0.85 + 0.08)), 0.6) * (0.25 + 0.75 * u);
+    const x = cx + Math.cos(a) * rx;
+    const y = cy + Math.sin(a) * ry;
+    // 楕円の法線方向
+    const nx = Math.cos(a) / rx;
+    const ny = Math.sin(a) / ry;
+    const nl = Math.hypot(nx, ny) || 1;
+    outer.push([x + (nx / nl) * wHalf, y + (ny / nl) * wHalf]);
+    inner.push([x - (nx / nl) * wHalf, y - (ny / nl) * wHalf]);
+  }
+  ctx.beginPath();
+  ctx.moveTo(outer[0][0], outer[0][1]);
+  for (const [x, y] of outer) ctx.lineTo(x, y);
+  for (let i = inner.length - 1; i >= 0; i--) ctx.lineTo(inner[i][0], inner[i][1]);
+  ctx.closePath();
+  ctx.fillStyle = color;
   ctx.fill();
 }
 

@@ -1,5 +1,6 @@
 import { mkdirSync } from 'node:fs';
 import { makeStyle } from './make-style.mjs';
+import { installOmtMock } from './omt-mock.mjs';
 import { chromium } from 'playwright';
 const BASE = process.env.BASE ?? 'http://localhost:5173/';
 const lat = Number(process.env.LAT ?? 35.658581), lng = Number(process.env.LNG ?? 139.745433);
@@ -12,7 +13,12 @@ const page = await ctx.newPage();
 const logs = [];
 page.on('console', (m) => logs.push(`[${m.type()}] ${m.text()}`));
 page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`));
-await page.route('https://tiles.openfreemap.org/**', (r) => r.request().url().includes('/styles/') ? r.fulfill({ json: makeStyle(lng, lat) }) : r.abort());
+// MOCK=simple で世界地図＋疑似街路の簡易スタイル、既定は OpenMapTiles 形式の疑似ベクタータイル（Google 風スタイルの確認用）
+if (process.env.MOCK === 'simple') {
+  await page.route('https://tiles.openfreemap.org/**', (r) => r.request().url().includes('/styles/') ? r.fulfill({ json: makeStyle(lng, lat) }) : r.abort());
+} else {
+  await installOmtMock(page, { lng, lat });
+}
 await page.route('https://fonts.googleapis.com/**', (r) => r.fulfill({ body: '', contentType: 'text/css' }));
 const q = new URLSearchParams({ v: '1', lat: String(lat), lng: String(lng), name, z: '17' });
 if (process.env.NOTE) q.set('note', process.env.NOTE);
