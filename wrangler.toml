@@ -1,0 +1,4 @@
+# Cloudflare Pages 用設定（`npx wrangler pages deploy` / `npx wrangler pages dev`）
+name = "gorgeous-map"
+compatibility_date = "2026-09-01"
+pages_build_output_dir = "dist"
