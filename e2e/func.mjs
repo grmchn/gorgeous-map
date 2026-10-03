@@ -16,7 +16,7 @@ async function newPage(browser, opts = {}) {
   await page.route('https://tiles.openfreemap.org/**', (r) => r.request().url().includes('/styles/') ? r.fulfill({ json: makeStyle(139.745433, 35.658581) }) : r.abort());
   return { ctx, page };
 }
-const placeUrl = (extra = '') => `${BASE}?v=1&lat=35.658581&lng=139.745433&name=${encodeURIComponent('東京タワー&#🍣 <b>x</b>')}&note=${encodeURIComponent('北側入口')}&z=17${extra}`;
+const placeUrl = (extra = '') => `${BASE}?v=1&lat=35.658581&lng=139.745433&name=${encodeURIComponent('東京タワー&#🍣 <b>x</b>')}&event=${encodeURIComponent('佐藤さん送別会 & 二次会')}&note=${encodeURIComponent('北側入口')}&z=17${extra}`;
 const phase = (page) => page.evaluate(() => document.querySelector('.viewer')?.dataset.phase);
 
 const browser = await chromium.launch({ args: GL });
@@ -27,12 +27,13 @@ const browser = await chromium.launch({ args: GL });
   await page.goto(placeUrl());
   await page.waitForFunction(() => document.querySelector('.viewer')?.dataset.phase !== 'loading', null, { timeout: 30000 });
   const seen = await page.evaluate(() => new Promise((resolve) => {
-    const phases = []; let frames = 0; const t0 = performance.now(); let maxGap = 0; let last = t0;
+    const phases = []; let frames = 0; const lngs = new Set(); const t0 = performance.now(); let maxGap = 0; let last = t0;
     const loop = () => {
       const now = performance.now(); maxGap = Math.max(maxGap, now - last); last = now; frames++;
       const p = document.querySelector('.viewer').dataset.phase;
+      if (p === 'globe' && window.__show) lngs.add(Math.round(window.__show['map'].getCenter().lng / 30));
       if (phases.at(-1)?.p !== p) phases.push({ p, t: Math.round(now - t0) });
-      if (p === 'settled') return resolve({ phases, frames, ms: Math.round(now - t0), maxGap: Math.round(maxGap) });
+      if (p === 'settled') return resolve({ phases, frames, ms: Math.round(now - t0), maxGap: Math.round(maxGap), spun: lngs.size >= 6 });
       requestAnimationFrame(loop);
     };
     requestAnimationFrame(loop);
@@ -41,6 +42,8 @@ const browser = await chromium.launch({ args: GL });
   const name = await page.textContent('.place-name');
   check('名前をテキストとして表示（HTML解釈しない）', name === '東京タワー&#🍣 <b>x</b>', name);
   check('補足表示', (await page.textContent('.place-note')) === '北側入口');
+  check('イベント名表示', (await page.textContent('.place-event')) === '🎉 佐藤さん送別会 & 二次会');
+  check('globe 中に地球が回る（経度が変化）', seen.spun, '');
   const skipHidden = await page.isHidden('.skip');
   check('settled 後にスキップが消える', skipHidden);
   const gm = await page.getAttribute('a[href*="google.com/maps"]', 'href');
@@ -52,7 +55,7 @@ const browser = await chromium.launch({ args: GL });
   await page.evaluate(() => { delete navigator.share; });
   await page.click('text=URLコピー');
   const clip = await page.evaluate(() => navigator.clipboard.readText());
-  check('URLコピー：既知パラメータのみ・往復OK', clip.startsWith(BASE + '?v=1&lat=35.658581&lng=139.745433&name=') && !clip.includes('dbg'), clip);
+  check('URLコピー：既知パラメータのみ・往復OK', clip.startsWith(BASE + '?v=1&lat=35.658581&lng=139.745433&name=') && clip.includes('&event=') && !clip.includes('dbg'), clip);
   // 共有キャンセルはエラーにならない
   await page.evaluate(() => { navigator.share = () => Promise.reject(new DOMException('cancel', 'AbortError')); });
   await page.click('text=共有する');
@@ -161,11 +164,12 @@ for (const [label, q] of [['lat欠落', '?lng=1&name=x'], ['未対応v', '?v=9&l
   const moved = await page.textContent('.coord-text');
   check('地図クリックでピン修正', moved !== '35.658580, 139.745433' && (await page.textContent('.coord-kind')).includes('地図で指定'), moved);
   await page.fill('#place-name', '東京タワー 北口 & #1 🗼');
+  await page.fill('#place-event', '夏祭り 2026');
   await page.click('text=共有URLを作る');
   const url = await page.inputValue('.result input');
   const u = new URL(url);
   const [la, ln] = moved.split(', ').map(Number);
-  check('共有URLが修正後の座標・名前', Number(u.searchParams.get('lat')) === la && Number(u.searchParams.get('lng')) === ln && u.searchParams.get('name') === '東京タワー 北口 & #1 🗼', url);
+  check('共有URLが修正後の座標・名前', Number(u.searchParams.get('lat')) === la && Number(u.searchParams.get('lng')) === ln && u.searchParams.get('name') === '東京タワー 北口 & #1 🗼' && u.searchParams.get('event') === '夏祭り 2026', url);
   // 表示中心だけのURL
   await page.fill('#gm-url', 'https://www.google.com/maps/@35.6812,139.7671,15z');
   await page.click('text=読み込む');

@@ -22,6 +22,21 @@ export const punch = (t: number): number => {
   return t < k ? 0.72 * (t / k) ** 3 : 0.72 + 0.28 * easeOutQuart((t - k) / (1 - k));
 };
 
+/**
+ * 地球のグルグル用：前半は一定の速さで勢いよく回り、brakeAt から急ブレーキ。
+ * 少し行き過ぎて戻り「ピタッ」と止まる。ブレーキ開始時の速度はつながるようにしてある。
+ */
+export const spinEase = (t: number, brakeAt = 0.6, overshoot = 1.2): number => {
+  if (t <= 0) return 0;
+  if (t >= 1) return 1;
+  const a = brakeAt;
+  const v0 = 3 + overshoot; // easeOutBack の初速
+  const v = v0 / (1 - a + a * v0);
+  if (t < a) return v * t;
+  const fa = v * a;
+  return fa + (1 - fa) * easeOutBack((t - a) / (1 - a), overshoot);
+};
+
 /** 減衰振動（揺れ用）。dt は衝撃からの経過ms。 */
 export const shakeAt = (dt: number, amp: number, duration = 260): number => {
   if (dt < 0 || dt > duration) return 0;

@@ -8,7 +8,8 @@ const root = document.getElementById('app')!;
 const parsed = parsePlaceParams(window.location.search);
 
 if (parsed.kind === 'ok') {
-  document.title = `${parsed.place.name} | ゴージャス地図（仮）`;
+  const { name, event } = parsed.place;
+  document.title = `${event ? `${event}｜` : ''}${name} | ゴージャス地図（仮）`;
   document.body.classList.add('mode-viewer');
   mountViewer(root, parsed.place, {
     mode: 'share',

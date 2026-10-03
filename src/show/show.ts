@@ -11,6 +11,7 @@ import {
   progress,
   punch,
   shakeAt,
+  spinEase,
 } from './easing';
 import { SpeedLines } from './speedLines';
 
@@ -26,6 +27,8 @@ export interface ShowElements {
   sfx: HTMLElement[];
   /** 到着時の「ババーン！」 */
   babaan: HTMLElement;
+  /** イベント名の予告（「○○の場所は…」）。イベント名が無ければ null */
+  teaser: HTMLElement | null;
   /** ピン（Marker の内側要素。落下アニメはこれを動かす） */
   pin: HTMLElement;
   ring: HTMLElement;
@@ -189,10 +192,11 @@ export class Show {
     const zoom = this.zoomAt(t, z0);
     const finalPad = this.opts.getPadding();
     const padK = easeInOutCubic(clamp01((zoom - z0) / (this.place.zoom - z0)));
-    const intro = easeOutCubic(progress(t, SHOW.globeIn.start, SHOW.globeIn.end));
+    const spin = this.spinAt(t);
 
     this.map.jumpTo({
-      center: [lng + SHOW.globeIn.spinDeg * (1 - intro), lat],
+      // 経度をずらして地球を回す。最後は少し行き過ぎて戻り、目的地が正面でピタッと止まる
+      center: [normalizeLng(lng + SHOW.globeIn.spinDeg * (1 - spin)), lat],
       zoom,
       bearing: this.bearingAt(t),
       pitch: 0,
@@ -210,6 +214,7 @@ export class Show {
     this.renderPin(t);
     this.renderCard(t);
     this.renderBabaan(t);
+    this.renderTeaser(t);
     this.renderActions(t >= SHOW.settle.actionsIn ? progress(t, SHOW.settle.actionsIn, SHOW.settle.end) : 0);
   }
 
@@ -225,6 +230,7 @@ export class Show {
     hide(this.els.finger);
     hide(this.els.bubble);
     hide(this.els.babaan);
+    if (this.els.teaser) hide(this.els.teaser);
     this.els.sfx.forEach(hide);
     this.lines?.clear();
     this.els.pin.style.opacity = '1';
@@ -260,7 +266,18 @@ export class Show {
     return this.place.zoom;
   }
 
+  /** 地球の回転の進み具合（0→1、終盤にわずかに 1 を超えて戻る） */
+  private spinAt(t: number): number {
+    const g = SHOW.globeIn;
+    return spinEase(progress(t, g.start, g.end), g.brakeAt, g.overshoot);
+  }
+
   private bearingAt(t: number): number {
+    if (t < SHOW.globeIn.end) {
+      // 回っている間は地軸を傾けて勢いを出し、止まるときにまっすぐ戻す
+      const k = easeInOutCubic(progress(t, SHOW.globeIn.start, SHOW.globeIn.end));
+      return SHOW.globeIn.tiltDeg * (1 - k);
+    }
     for (const s of SHOW.stages) {
       if (!s.bearing) continue;
       const k = progress(t, s.start, s.start + s.move + s.hold);
@@ -443,6 +460,18 @@ export class Show {
     el.style.transform = `translate(${x}px, ${y}px) rotate(8deg) scale(${0.3 + 0.7 * pop})`;
   }
 
+  private renderTeaser(t: number): void {
+    const el = this.els.teaser;
+    if (!el) return;
+    const { start, end } = SHOW.teaser;
+    if (t < start || t >= end) return hide(el);
+    const k = easeOutBack(progress(t, start, start + 300), 1.8);
+    const fade = 1 - easeInCubic(progress(t, end - 250, end));
+    el.style.visibility = 'visible';
+    el.style.opacity = String(Math.min(clamp01(progress(t, start, start + 120)), fade));
+    el.style.transform = `translateX(-50%) scale(${0.6 + 0.4 * k})`;
+  }
+
   private renderActions(k: number): void {
     const el = this.els.actions;
     el.style.opacity = String(easeOutCubic(k));
@@ -459,6 +488,10 @@ export function phaseAt(t: number): Phase {
   if (t < SHOW.arrival.start) return 'zooming';
   // settled への遷移は finish() が行う（操作の解放と同時にするため）
   return 'arrival';
+}
+
+function normalizeLng(lng: number): number {
+  return ((((lng + 180) % 360) + 360) % 360) - 180;
 }
 
 function hide(el: HTMLElement): void {

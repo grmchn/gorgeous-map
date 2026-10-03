@@ -49,6 +49,20 @@ describe('共有URLの往復', () => {
     expect(r.zoom).toBe(18);
   });
 
+  it('イベント名（任意）も往復する', () => {
+    const p: Place = { lat: 35, lng: 139, name: '○○ホール 正面', event: '🎉 佐藤さん送別会 & 二次会 #1', zoom: 17 };
+    expect(roundTrip(p)).toEqual(p);
+    const url = buildShareUrl(BASE, p);
+    expect(url.indexOf('event=')).toBeGreaterThan(url.indexOf('name='));
+  });
+
+  it('イベント名が空ならパラメータを出さない', () => {
+    const res = validatePlace({ lat: 1, lng: 2, name: 'n', event: '  ' });
+    if (!res.ok) throw new Error('invalid');
+    expect('event' in res.place).toBe(false);
+    expect(buildShareUrl(BASE, res.place)).not.toContain('event=');
+  });
+
   it('空白は %20 にエンコードされる', () => {
     const url = buildShareUrl(BASE, { lat: 1, lng: 2, name: 'a b', zoom: 17 });
     expect(url).toContain('name=a%20b');
@@ -101,6 +115,8 @@ describe('URLパラメータの検証', () => {
     ['name 空白のみ', '?lat=1&lng=2&name=%20%20'],
     ['name 101文字', `?lat=1&lng=2&name=${'あ'.repeat(101)}`],
     ['note 201文字', `?lat=1&lng=2&name=x&note=${'a'.repeat(201)}`],
+    ['event 101文字', `?lat=1&lng=2&name=x&event=${'a'.repeat(101)}`],
+    ['event 重複', '?lat=1&lng=2&name=x&event=a&event=b'],
     ['緯度範囲外', '?lat=91&lng=2&name=x'],
     ['極域（メルカトル範囲外）', '?lat=89&lng=2&name=x'],
     ['経度範囲外', '?lat=1&lng=180.5&name=x'],

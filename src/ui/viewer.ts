@@ -43,11 +43,15 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
   const mapEl = h('div', { class: 'viewer-map', 'aria-label': `${place.name} の地図`, role: 'region' });
   const canvas = h('canvas', { class: 'speedlines', 'aria-hidden': 'true' });
   const finger = h('div', { class: 'finger', 'aria-hidden': 'true' }, svg(FINGER_SVG));
-  const bubbleKoko = h('span', { class: 'bubble-koko' }, 'ここ！');
-  const bubble = h('div', { class: 'bubble', 'aria-hidden': 'true' }, h('span', { class: 'bubble-soure' }, 'そうれ、'), bubbleKoko);
+  const bubbleKoko = h('span', { class: 'bubble-koko' }, SHOW.lines.second);
+  const bubble = h('div', { class: 'bubble', 'aria-hidden': 'true' }, h('span', { class: 'bubble-soure' }, SHOW.lines.first), bubbleKoko);
+  // イベント名があれば、地球が回っている間に「○○の場所は…」と予告する（場所そのものはまだ明かさない）
+  const teaser = place.event
+    ? h('div', { class: 'teaser', 'aria-hidden': 'true' }, h('span', { class: 'teaser-event' }, `「${place.event}」`), h('span', {}, 'の場所は…'))
+    : null;
   const sfx = SHOW.stages.map((s) => h('div', { class: 'sfx', 'aria-hidden': 'true' }, s.sfx));
   const babaan = h('div', { class: 'sfx sfx-babaan', 'aria-hidden': 'true' }, 'ババーン！');
-  const fx = h('div', { class: 'fx-layer' }, finger, bubble, ...sfx, babaan);
+  const fx = h('div', { class: 'fx-layer' }, finger, bubble, ...sfx, babaan, teaser);
   const stage = h('div', { class: 'stage' }, mapEl, canvas, fx);
 
   const pinInner = h('div', { class: 'pin-inner' }, svg(PIN_SVG));
@@ -57,7 +61,8 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
   const card = h(
     'div',
     { class: 'name-card', role: 'heading', 'aria-level': '1' },
-    h('div', { class: 'name-kicker' }, 'そうれ、ここ！'),
+    h('div', { class: 'name-kicker' }, `${SHOW.lines.first}${SHOW.lines.second}`),
+    place.event ? h('div', { class: 'place-event' }, `🎉 ${place.event}`) : null,
     h('div', { class: `place-name ${nameSizeClass(place.name)}` }, place.name),
     place.note ? h('div', { class: 'place-note' }, place.note) : null,
   );
@@ -252,7 +257,7 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
       });
     });
     const fontsReady = Promise.race([
-      document.fonts?.load('1em "Dela Gothic One"', 'そうれ、ここ！ズーン').catch(() => undefined),
+      document.fonts?.load('1em "Dela Gothic One"', `${SHOW.lines.first}${SHOW.lines.second}ズーン`).catch(() => undefined),
       new Promise((r) => setTimeout(r, 1500)),
     ]);
     const prefetch = reduced
@@ -266,7 +271,7 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
     loading.remove();
     show = new Show(
       m,
-      { stage, canvas, finger, bubble, bubbleKoko, sfx, babaan, pin: pinInner, ring, card, actions, skip: skipBtn },
+      { stage, canvas, finger, bubble, bubbleKoko, sfx, babaan, teaser, pin: pinInner, ring, card, actions, skip: skipBtn },
       place,
       { reducedMotion: reduced, getPadding, onPhase: setPhase },
     );

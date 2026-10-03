@@ -7,6 +7,8 @@ export interface Place {
   lat: number;
   lng: number;
   name: string;
+  /** 任意のイベント名（例：「○○さん送別会」） */
+  event?: string;
   note?: string;
   zoom: number;
 }
@@ -17,11 +19,12 @@ export const MIN_ZOOM = 15;
 export const MAX_ZOOM = 19;
 export const NAME_MAX = 100;
 export const NOTE_MAX = 200;
+export const EVENT_MAX = 100;
 /** Web メルカトルで表示できる緯度の上限。これを超える地点は丸めずにエラーにする。 */
 export const MAX_MERCATOR_LAT = 85.051129;
 export const COORD_DECIMALS = 6;
 
-const KNOWN_KEYS = ['v', 'lat', 'lng', 'name', 'note', 'z'] as const;
+const KNOWN_KEYS = ['v', 'lat', 'lng', 'name', 'event', 'note', 'z'] as const;
 
 export type ParseResult =
   | { kind: 'empty' }
@@ -69,6 +72,11 @@ export function validateNote(note: string): string | null {
   return null;
 }
 
+export function validateEvent(event: string): string | null {
+  if (charLength(event.trim()) > EVENT_MAX) return `イベント名は${EVENT_MAX}文字以内にしてください。`;
+  return null;
+}
+
 export function validateZoom(z: number): string | null {
   if (!Number.isFinite(z) || z < MIN_ZOOM || z > MAX_ZOOM) {
     return `倍率(z)は ${MIN_ZOOM}〜${MAX_ZOOM} で指定してください。`;
@@ -81,6 +89,7 @@ export function validatePlace(input: {
   lat: number;
   lng: number;
   name: string;
+  event?: string;
   note?: string;
   zoom?: number;
 }): { ok: true; place: Place } | { ok: false; errors: string[] } {
@@ -91,6 +100,9 @@ export function validatePlace(input: {
   if (lngErr) errors.push(lngErr);
   const nameErr = validateName(input.name);
   if (nameErr) errors.push(nameErr);
+  const event = (input.event ?? '').trim();
+  const eventErr = validateEvent(event);
+  if (eventErr) errors.push(eventErr);
   const note = (input.note ?? '').trim();
   const noteErr = validateNote(note);
   if (noteErr) errors.push(noteErr);
@@ -104,6 +116,7 @@ export function validatePlace(input: {
       lat: roundCoord(input.lat),
       lng: roundCoord(input.lng),
       name: normalizeName(input.name),
+      ...(event ? { event } : {}),
       ...(note ? { note } : {}),
       zoom,
     },
@@ -144,6 +157,7 @@ export function parsePlaceParams(search: string | URLSearchParams): ParseResult 
   const lngRaw = params.get('lng');
   const nameRaw = params.get('name');
   const noteRaw = params.get('note');
+  const eventRaw = params.get('event');
   const zRaw = params.get('z');
 
   let lat = NaN;
@@ -170,7 +184,14 @@ export function parsePlaceParams(search: string | URLSearchParams): ParseResult 
   }
   if (errors.length) return { kind: 'error', errors };
 
-  const res = validatePlace({ lat, lng, name: nameRaw ?? '', note: noteRaw ?? undefined, zoom });
+  const res = validatePlace({
+    lat,
+    lng,
+    name: nameRaw ?? '',
+    event: eventRaw ?? undefined,
+    note: noteRaw ?? undefined,
+    zoom,
+  });
   if (!res.ok) return { kind: 'error', errors: res.errors };
   // 受け取った座標はそのまま（丸め済みでも未丸めでも）尊重する。
   return { kind: 'ok', place: { ...res.place, lat, lng } };
@@ -183,6 +204,7 @@ export function buildPlaceQuery(place: Place): string {
   p.set('lat', formatCoord(place.lat));
   p.set('lng', formatCoord(place.lng));
   p.set('name', place.name);
+  if (place.event) p.set('event', place.event);
   if (place.note) p.set('note', place.note);
   p.set('z', String(place.zoom));
   // URLSearchParams は空白を "+" にする。アプリによって "+" の扱いが揺れるので %20 に統一する。

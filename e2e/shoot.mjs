@@ -16,12 +16,13 @@ await page.route('https://tiles.openfreemap.org/**', (r) => r.request().url().in
 await page.route('https://fonts.googleapis.com/**', (r) => r.fulfill({ body: '', contentType: 'text/css' }));
 const q = new URLSearchParams({ v: '1', lat: String(lat), lng: String(lng), name, z: '17' });
 if (process.env.NOTE) q.set('note', process.env.NOTE);
+if (process.env.EVENT) q.set('event', process.env.EVENT);
 await page.goto(`${BASE}?${q}`);
 await page.waitForFunction(() => window.__show, null, { timeout: 30000 });
 if (process.env.VIDEO) {
   await page.waitForTimeout(7000);
 } else {
-  const times = (process.env.TIMES ?? '200,700,1000,1300,1800,2100,2400,2700,3100,3500,3720,3900,4100,4400,5400').split(',').map(Number);
+  const times = (process.env.TIMES ?? '0,250,500,800,1100,1300,1500,1750,2100,2600,3100,3600,4200,4600,5000,5600,6200').split(',').map(Number);
   for (const t of times) {
     await page.evaluate((t) => window.__show.seek(t), t);
     await page.waitForTimeout(Number(process.env.SETTLE ?? 600));

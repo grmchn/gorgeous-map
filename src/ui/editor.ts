@@ -2,6 +2,7 @@ import type { Map as MlMap, Marker } from 'maplibre-gl';
 import { classifyInput, parseCoordinateText, parseLongMapsUrl, type MapUrlResult } from '../lib/googleMaps';
 import {
   DEFAULT_ZOOM,
+  EVENT_MAX,
   MAX_MERCATOR_LAT,
   NAME_MAX,
   NOTE_MAX,
@@ -61,7 +62,9 @@ export function mountEditor(root: HTMLElement): void {
   // ---------- 2. 確認・修正 ----------
   const nameInput = h('input', { id: 'place-name', type: 'text', placeholder: '例：○○ビル 1階入口', autocomplete: 'off', enterkeyhint: 'done' });
   const nameCount = h('span', { class: 'counter' }, `0/${NAME_MAX}`);
-  const noteInput = h('input', { id: 'place-note', type: 'text', placeholder: '例：北側入口／地下1階（任意）', autocomplete: 'off', enterkeyhint: 'done' });
+  const eventInput = h('input', { id: 'place-event', type: 'text', placeholder: '例：佐藤さん送別会／夏祭り（任意）', autocomplete: 'off', enterkeyhint: 'done' });
+  const eventCount = h('span', { class: 'counter' }, `0/${EVENT_MAX}`);
+  const noteInput = h('input', { id: 'place-note', type: 'text', placeholder: '例：北側入口／地下1階', autocomplete: 'off', enterkeyhint: 'done' });
   const noteCount = h('span', { class: 'counter' }, `0/${NOTE_MAX}`);
 
   const mapEl = h('div', { class: 'editor-map', role: 'application', 'aria-label': '位置調整用の地図' });
@@ -115,7 +118,8 @@ export function mountEditor(root: HTMLElement): void {
       { class: 'panel' },
       h('h2', {}, h('span', { class: 'step' }, '2'), '場所を確認・修正'),
       h('label', { class: 'field', for: 'place-name' }, h('span', { class: 'label' }, '場所名', h('em', {}, '必須')), nameInput, nameCount),
-      h('label', { class: 'field', for: 'place-note' }, h('span', { class: 'label' }, '補足'), noteInput, noteCount),
+      h('label', { class: 'field', for: 'place-event' }, h('span', { class: 'label' }, 'イベント名', h('small', { class: 'opt' }, '任意')), eventInput, eventCount),
+      h('label', { class: 'field', for: 'place-note' }, h('span', { class: 'label' }, '補足', h('small', { class: 'opt' }, '任意')), noteInput, noteCount),
       h('div', { class: 'field' }, h('span', { class: 'label' }, 'ピンの位置', h('em', {}, '必須')), h('p', { class: 'hint' }, '地図をタップするか、ピンをドラッグして入口などに合わせてください。'), mapWrap),
       h('p', { class: 'coords' }, coordText, ' ', coordKind, ' ', coordCheck),
       h(
@@ -161,11 +165,14 @@ export function mountEditor(root: HTMLElement): void {
     const n = charLength(nameInput.value.trim());
     nameCount.textContent = `${n}/${NAME_MAX}`;
     nameCount.classList.toggle('over', n > NAME_MAX);
+    const ev = charLength(eventInput.value.trim());
+    eventCount.textContent = `${ev}/${EVENT_MAX}`;
+    eventCount.classList.toggle('over', ev > EVENT_MAX);
     const m = charLength(noteInput.value.trim());
     noteCount.textContent = `${m}/${NOTE_MAX}`;
     noteCount.classList.toggle('over', m > NOTE_MAX);
   };
-  for (const el of [nameInput, noteInput]) {
+  for (const el of [nameInput, eventInput, noteInput]) {
     el.addEventListener('input', () => {
       updateCounters();
       invalidate();
@@ -449,6 +456,7 @@ export function mountEditor(root: HTMLElement): void {
       lat: state.lat ?? 0,
       lng: state.lng ?? 0,
       name: nameInput.value,
+      event: eventInput.value,
       note: noteInput.value,
       zoom: Number(zoomSelect.value),
     });
