@@ -6,7 +6,9 @@ import { clamp01, easeInCubic, easeOutCubic, progress, seeded, spinEase } from '
  * - 背景：地球の後ろで回る放射状の後光（「ここぉ！」で金色に光る）
  * - 回転線：地球がグルグル回っている間、左右にマンガの回転線
  * - 衝撃波：ズーム各段の着弾とピン着地でリングが広がる
- * - 火花と紙吹雪：到着時
+ * - 火花：ピン着地
+ * - 場所名の着地（文字は出さずにエフェクトで「バ・バーン！」）：
+ *   カード後ろから放射する金色の光線、衝撃波、左右下からの紙吹雪キャノン、カードまわりのキラキラ
  */
 export class Fx {
   private bg: Ctx2D;
@@ -36,6 +38,7 @@ export class Fx {
     gy: number,
     globeR: number,
     pin: { x: number; y: number } | null,
+    card: Rect,
   ): void {
     if (!this.bg.ctx || !this.fg.ctx) return;
     this.bg.clear();
@@ -44,7 +47,9 @@ export class Fx {
     this.drawSpinArcs(t, gx, gy, globeR);
     this.drawShockwaves(t, px, py, pin);
     if (pin) this.drawSparks(t, pin.x, pin.y);
-    this.drawConfetti(t);
+    this.drawCardBang(t, card);
+    this.drawConfettiCannons(t);
+    this.drawTwinkles(t, card);
   }
 
   /** 地球の後ろの後光 */
@@ -164,9 +169,56 @@ export class Fx {
     }
   }
 
-  /** 「バーン！」で降る紙吹雪 */
-  private drawConfetti(t: number): void {
-    const t0 = SHOW.arrival.cardStart + 170;
+  /** 場所名カードの「バ・バーン！」：カードの後ろから光線が噴き出し、衝撃波が広がる */
+  private drawCardBang(t: number, card: Rect): void {
+    const { cardStart, cardBang } = SHOW.arrival;
+    const end = cardBang + 900;
+    if (t < cardStart || t >= end || card.right <= card.left) return;
+    const { ctx, w, h } = this.fg.begin();
+    const cx = (card.left + card.right) / 2;
+    const cy = (card.top + card.bottom) / 2;
+    const len = Math.hypot(w, h);
+    // 「バ」で小さく、「バーン」で大きく
+    const small = progress(t, cardStart, cardStart + 200);
+    const big = progress(t, cardBang, end);
+    const k = t < cardBang ? 0.45 * easeOutCubic(small) : 0.45 + 0.55 * easeOutCubic(Math.min(1, big * 3));
+    const vis = t < cardBang ? 1 - 0.4 * small : 1 - easeInCubic(big);
+    const n = 24;
+    const rot = t / 900;
+    ctx.save();
+    ctx.translate(cx, cy);
+    for (let i = 0; i < n; i++) {
+      const a0 = rot + (i / n) * Math.PI * 2;
+      const a1 = a0 + (Math.PI / n) * (i % 2 ? 0.5 : 0.9);
+      const r = len * k * (i % 2 ? 0.75 : 1);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(a0) * r, Math.sin(a0) * r);
+      ctx.lineTo(Math.cos(a1) * r, Math.sin(a1) * r);
+      ctx.closePath();
+      ctx.fillStyle = i % 2 ? `rgba(255, 45, 85, ${0.35 * vis})` : `rgba(255, 198, 26, ${0.55 * vis})`;
+      ctx.fill();
+    }
+    ctx.restore();
+    // 衝撃波（「バ」と「バーン」の2発）
+    for (const [at, size, width] of [
+      [cardStart, 0.35, 10],
+      [cardBang, 0.8, 22],
+    ] as const) {
+      const q = progress(t, at, at + 500);
+      if (q <= 0 || q >= 1) continue;
+      const e = easeOutCubic(q);
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, len * size * e, len * size * e * 0.75, 0, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255, 255, 255, ${0.9 * (1 - q)})`;
+      ctx.lineWidth = width * (1 - q) + 2;
+      ctx.stroke();
+    }
+  }
+
+  /** 「バーン」に合わせて画面の左右下から紙吹雪を打ち上げる */
+  private drawConfettiCannons(t: number): void {
+    const t0 = SHOW.arrival.cardBang;
     const end = SHOW.settle.end;
     if (t < t0 || t >= end) return;
     const { ctx, w, h } = this.fg.begin();
@@ -174,21 +226,24 @@ export class Fx {
     const rnd = seeded(2024);
     const colors = ['#ffc61a', '#ff2d55', '#ffffff', '#4fd18b', '#3a8bff', '#ff8a00'];
     const dt = (t - t0) / 1000;
-    for (let i = 0; i < 110; i++) {
-      const delay = rnd() * 0.5;
-      const x0 = rnd() * w;
-      const vy = 260 + 260 * rnd();
-      const sway = 18 + 30 * rnd();
+    const g = 1400;
+    for (let i = 0; i < 140; i++) {
+      const side = i % 2 ? 1 : -1;
+      const delay = rnd() * 0.12;
+      const vx = -side * (120 + 380 * rnd()) * (w / 400);
+      const vy = -(900 + 600 * rnd()) * Math.min(1.3, h / 800);
       const phase = rnd() * Math.PI * 2;
-      const spin = 4 + 8 * rnd();
-      const cw = 6 + 6 * rnd();
-      const ch = 3 + 4 * rnd();
+      const spin = 6 + 10 * rnd();
+      const cw = 7 + 6 * rnd();
+      const ch = 4 + 4 * rnd();
       const color = colors[i % colors.length];
       const tt = dt - delay;
       if (tt <= 0) continue;
-      const y = -20 + vy * tt;
-      if (y > h + 20) continue;
-      const x = x0 + Math.sin(phase + tt * 5) * sway;
+      // 打ち上げ→空気抵抗で減速→ひらひら落ちる
+      const drag = 1 - Math.exp(-tt * 2.2);
+      const x = (side > 0 ? w + 10 : -10) + (vx / 2.2) * drag + Math.sin(phase + tt * 6) * 14 * Math.min(1, tt * 2);
+      const y = h * 0.92 + (vy / 2.2) * drag + 0.5 * g * 0.18 * tt * tt * 2;
+      if (y > h + 30) continue;
       ctx.save();
       ctx.translate(x, y);
       ctx.rotate(phase + tt * spin);
@@ -199,6 +254,43 @@ export class Fx {
       ctx.restore();
     }
   }
+
+  /** 余韻の間、カードのまわりでキラキラ */
+  private drawTwinkles(t: number, card: Rect): void {
+    const t0 = SHOW.arrival.cardBang + 150;
+    const end = SHOW.settle.end;
+    if (t < t0 || t >= end || card.right <= card.left) return;
+    const { ctx } = this.fg.begin();
+    const fade = 1 - easeInCubic(progress(t, end - 300, end));
+    const rnd = seeded(31);
+    for (let i = 0; i < 10; i++) {
+      const x = card.left + (rnd() * 1.1 - 0.05) * (card.right - card.left);
+      const y = card.top - 10 - rnd() * 60 + (i % 3 === 0 ? card.bottom - card.top + 40 : 0);
+      const period = 500 + 400 * rnd();
+      const ph = ((t - t0 + rnd() * period) % period) / period;
+      const s = Math.sin(ph * Math.PI) * (8 + 8 * rnd());
+      if (s <= 0.5) continue;
+      ctx.fillStyle = `rgba(255, 236, 140, ${fade})`;
+      sparkle(ctx, x, y, s);
+    }
+  }
+}
+
+export interface Rect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+function sparkle(ctx: CanvasRenderingContext2D, x: number, y: number, r: number): void {
+  ctx.beginPath();
+  ctx.moveTo(x, y - r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.quadraticCurveTo(x, y, x, y + r);
+  ctx.quadraticCurveTo(x, y, x - r, y);
+  ctx.quadraticCurveTo(x, y, x, y - r);
+  ctx.fill();
 }
 
 function star(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, rot: number): void {

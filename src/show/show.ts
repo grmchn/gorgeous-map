@@ -34,8 +34,6 @@ export interface ShowElements {
   /** 指先の衝撃線 */
   poke: HTMLElement;
   sfx: HTMLElement[];
-  /** 到着時の「ババーン！」 */
-  babaan: HTMLElement;
   /** ピン（Marker の内側要素。落下アニメはこれを動かす） */
   pin: HTMLElement;
   ring: HTMLElement;
@@ -57,9 +55,9 @@ export interface ShowOptions {
 }
 
 /** 指アイコンの指先位置（要素左上からのpx）と向き */
-const FINGER_TIP = { x: 6, y: 54 };
+const FINGER_TIP = { x: 4, y: 57 };
 /** 左向きの指を時計回りに傾け、右下から左上を指す */
-const FINGER_ANGLE = 35;
+const FINGER_ANGLE = 28;
 
 /**
  * 演出の進行役。描画はすべて「経過時間 t の関数」として計算するので、
@@ -83,7 +81,6 @@ export class Show {
     callFirst: { w: 180, h: 70 },
     callSecond: { w: 180, h: 80 },
     sfx: [] as { w: number; h: number }[],
-    babaan: { w: 160, h: 60 },
     card: { left: 0, top: 0, right: 0, bottom: 0 },
   };
 
@@ -184,7 +181,6 @@ export class Show {
     this.sizes.callFirst = { w: a.offsetWidth || 180, h: a.offsetHeight || 70 };
     this.sizes.callSecond = { w: b.offsetWidth || 180, h: b.offsetHeight || 80 };
     this.sizes.sfx = this.els.sfx.map((el) => ({ w: el.offsetWidth || 120, h: el.offsetHeight || 60 }));
-    this.sizes.babaan = { w: this.els.babaan.offsetWidth || 160, h: this.els.babaan.offsetHeight || 60 };
     // カードは拡大縮小アニメ中でも、レイアウト上の位置は変わらない
     const prev = this.els.card.style.transform;
     this.els.card.style.transform = '';
@@ -255,11 +251,11 @@ export class Show {
     this.renderPoke(t, p.x, p.y);
     this.renderSfx(t, p.x, p.y, w, h);
     this.renderSpeedLines(t, p.x, p.y);
-    this.fx.draw(t, p.x, p.y, gc.x, gc.y, globeR, t >= SHOW.arrival.start ? { x: p.x, y: p.y } : null);
+    const c = this.sizes.card;
+    this.fx.draw(t, p.x, p.y, gc.x, gc.y, globeR, t >= SHOW.arrival.start ? { x: p.x, y: p.y } : null, c);
     this.renderShake(t);
     this.renderPin(t);
     this.renderCard(t);
-    this.renderBabaan(t);
     this.renderActions(t >= SHOW.settle.actionsIn ? progress(t, SHOW.settle.actionsIn, SHOW.settle.end) : 0);
   }
 
@@ -276,7 +272,6 @@ export class Show {
     hide(this.els.callFirst);
     hide(this.els.callSecond);
     hide(this.els.poke);
-    hide(this.els.babaan);
     this.els.sfx.forEach(hide);
     this.lines?.clear();
     this.fx.clear();
@@ -352,8 +347,8 @@ export class Show {
     if (t < arrive) {
       const k = easeOutBack(progress(t, enter, arrive), 1.4);
       // 手首の方向（右下）から飛び込んでくる
-      dx = (1 - k) * 330;
-      dy = (1 - k) * 230;
+      dx = (1 - k) * 350;
+      dy = (1 - k) * 190;
       opacity = clamp01(progress(t, enter, enter + 60));
     } else if (t >= exitStart) {
       // 指が地図へ「ズブッ」と押し込まれるように縮んで消える
@@ -523,23 +518,6 @@ export class Show {
     el.style.visibility = 'visible';
     el.style.opacity = String(clamp01(progress(t, cardStart, cardStart + 70)));
     el.style.transform = k >= 1 ? '' : `scale(${s}) rotate(${rot}deg)`;
-  }
-
-  /** 場所名カードの右上に「ババーン！」。カードやピンを長く隠さないよう短く出して消す */
-  private renderBabaan(t: number): void {
-    const el = this.els.babaan;
-    const a = SHOW.arrival.cardStart + 60;
-    const b = SHOW.arrival.babaanEnd;
-    if (t < a || t >= b) return hide(el);
-    const { card, babaan, w } = this.sizes;
-    // 回転・拡大しても右端で切れないよう余裕を取る
-    const x = Math.max(6, Math.min(w - babaan.w * 1.12 - 6, card.right - babaan.w * 0.85));
-    const y = Math.max(this.sizes.top, card.top - babaan.h * 0.95);
-    const pop = easeOutBack(progress(t, a, a + 180), 2.4);
-    const fade = 1 - easeInCubic(progress(t, b - 250, b));
-    el.style.visibility = 'visible';
-    el.style.opacity = String(fade);
-    el.style.transform = `translate(${x}px, ${y}px) rotate(8deg) scale(${0.3 + 0.7 * pop})`;
   }
 
   private renderActions(k: number): void {

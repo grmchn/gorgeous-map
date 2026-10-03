@@ -301,7 +301,7 @@ function score(): ScoreEvent[] {
   add(ar.start, (s, t) => s.tone(t, 0.16, { type: 'sine', freq: 2200, freqEnd: 500, gain: 0.12 }));
   add(ar.pinLand, (s, t) => s.kick(t, 0.8));
   add(ar.cardStart, (s, t) => s.brass(t, 0.14, CHORD_BA, 0.18));
-  add(ar.cardStart + 170, (s, t) => {
+  add(ar.cardBang, (s, t) => {
     s.brass(t, 1.5, CHORD_FINAL, 0.2);
     s.crash(t, 0.32);
     s.kick(t, 0.7);

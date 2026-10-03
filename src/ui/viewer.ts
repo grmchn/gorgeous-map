@@ -4,7 +4,7 @@ import { SHOW } from '../show/config';
 import { Show, type Phase } from '../show/show';
 import { h, prefersReducedMotion, svg } from './dom';
 import { ShowSound } from '../show/sound';
-import { BURST_SVG, FINGER_SVG, GLOBE_SPINNER_SVG, PIN_SVG, POKE_SVG } from './icons';
+import { FINGER_SVG, GLOBE_SPINNER_SVG, PIN_SVG, POKE_SVG } from './icons';
 import { copyLink, shareLink } from './share';
 
 export interface ViewerOptions {
@@ -50,8 +50,7 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
   const callSecond = h('div', { class: 'bubble bubble-second', 'aria-hidden': 'true' }, SHOW.lines.second);
   const poke = h('div', { class: 'poke', 'aria-hidden': 'true' }, svg(POKE_SVG));
   const sfx = SHOW.stages.map((s) => h('div', { class: 'sfx', 'aria-hidden': 'true' }, s.sfx));
-  const babaan = h('div', { class: 'sfx sfx-babaan', 'aria-hidden': 'true' }, svg(BURST_SVG), h('span', {}, 'ババーン！'));
-  const fx = h('div', { class: 'fx-layer' }, ...sfx, poke, finger, callFirst, callSecond, babaan);
+  const fx = h('div', { class: 'fx-layer' }, ...sfx, poke, finger, callFirst, callSecond);
   const stage = h('div', { class: 'stage' }, bgCanvas, mapEl, canvas, fxCanvas, fx);
 
   const pinInner = h('div', { class: 'pin-inner' }, svg(PIN_SVG));
@@ -311,7 +310,7 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
     loading.remove();
     show = new Show(
       m,
-      { stage, canvas, bgCanvas, fxCanvas, finger, callFirst, callSecond, poke, sfx, babaan, pin: pinInner, ring, card, actions, skip: skipBtn },
+      { stage, canvas, bgCanvas, fxCanvas, finger, callFirst, callSecond, poke, sfx, pin: pinInner, ring, card, actions, skip: skipBtn },
       place,
       { reducedMotion: reduced, getPadding, getTopInset, onPhase: setPhase, sound, soundOn: () => soundOn },
     );

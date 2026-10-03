@@ -37,8 +37,11 @@ export const SHOW = {
     { start: at(1470), move: 400, hold: 170, zoom: 10.2, sfx: 'ズン！', shake: 7, bearing: 0 },
     { start: at(2040), move: 760, hold: 150, zoom: null, sfx: 'ズーーン！！', shake: 11, bearing: 14 },
   ],
-  /** 到着（ピン着地・場所名ババーン） */
-  arrival: { start: at(2950), pinLand: at(3110), cardStart: at(3030), cardSettle: at(3500), babaanEnd: at(4150) },
+  /**
+   * 到着（ピン着地・場所名の着地）。文字は出さず、cardStart の「バ」と cardBang の「バーン」を
+   * カード後ろの光線・衝撃波・紙吹雪キャノン・キラキラで表現する
+   */
+  arrival: { start: at(2950), pinLand: at(3110), cardStart: at(3030), cardBang: at(3200), cardSettle: at(3500) },
   /** 余韻のあと操作UIを出す */
   settle: { actionsIn: at(4350), end: at(4650) },
   /** 集中線 */
