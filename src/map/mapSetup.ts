@@ -5,7 +5,7 @@ import { buildGoogleLikeStyle, flattenBuildings, installPoiIcons } from './googl
 import workerUrl from './maplibreWorker?worker&url';
 import { startReadiness, type PrefetchGroupSpec } from './prefetchPlan';
 
-export { startReadiness };
+export { startReadiness, zoomPrefetchSteps, prefetchRadius } from './prefetchPlan';
 
 maplibregl.setWorkerUrl(workerUrl);
 
@@ -157,8 +157,8 @@ export function glyphUrls(style: StyleSpecification): string[] {
 
 /**
  * 演出の前半（「そぉ～れ」→ 地球が回る →「ここぉ！」）は時間が決まっていて、その間は地球しか映らない。
- * そこで、後で必要になるタイル（ズーム各段・最終画面）は演出を始めてから裏で読み込み、
- * 「必要になる時刻までに読み終わる見込み」が立った時点で演出を始める（＝待ち時間を短くする）。
+ * 後で必要になるタイル（途中の倍率を含むズーム経路）を開始前から裏で読み込む。
+ * status の margin=0 なら全件の取得処理完了を待ち、正の値なら実測ペースで開始を見積もる。
  * 取得したものはブラウザの HTTP キャッシュに載り、地図はそこから読み込む。
  */
 export class TilePrefetcher {

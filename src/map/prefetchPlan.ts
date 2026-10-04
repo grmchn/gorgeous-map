@@ -11,6 +11,27 @@ export interface PrefetchGroupSpec {
   needAtMs: number;
 }
 
+/** 停止位置だけでなく、各ズームの途中で通る整数倍率も先読みする。 */
+export function zoomPrefetchSteps(
+  stages: readonly { zoom: number | null; start: number }[],
+  finalZoom: number,
+): { zoom: number; needAtMs: number }[] {
+  const steps: { zoom: number; needAtMs: number }[] = [];
+  let zoom = 1;
+  for (const stage of stages) {
+    const target = Math.floor(stage.zoom ?? finalZoom);
+    while (zoom <= target) {
+      steps.push({ zoom: zoom++, needAtMs: stage.start });
+    }
+  }
+  return steps;
+}
+
+/** 画面の対角線を覆い、回転・パディング用に半タイル分の余裕を足す（512px/タイル）。 */
+export function prefetchRadius(width: number, height: number): number {
+  return Math.max(1, Math.ceil((Math.hypot(width, height) / 1024 + 0.5) * 2) / 2);
+}
+
 /** 速さを測るのに最低限ほしい件数・時間（これ未満では見積もらない） */
 const MIN_SAMPLES = 2;
 const MIN_ELAPSED_MS = 300;

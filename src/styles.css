@@ -475,6 +475,7 @@ textarea {
   align-items: center;
   gap: 8px;
   max-width: 560px;
+  min-width: 0;
   padding: 9px 16px 10px;
   color: #fff;
   background:
@@ -532,6 +533,7 @@ textarea {
 }
 .event-title h1 {
   margin: 0;
+  min-width: 0;
   font-size: clamp(1.2rem, 5.8vw, 1.7rem);
   font-weight: 900;
   line-height: 1.3;
@@ -539,9 +541,8 @@ textarea {
   text-shadow:
     0 2px 0 rgba(0, 0, 0, 0.35),
     0 0 10px rgba(255, 220, 120, 0.45);
-  overflow-wrap: anywhere;
-  max-height: 3.9em;
-  overflow-y: auto;
+  white-space: nowrap;
+  overflow: hidden;
 }
 .event-title-icon {
   font-size: 1.35em;
@@ -1136,9 +1137,6 @@ details.more[open] summary {
   .event-title {
     right: calc(min(400px, 48vw) + 12px);
     margin: 0;
-  }
-  .event-title h1 {
-    max-height: 2.7em;
   }
 }
 

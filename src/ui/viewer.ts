@@ -21,12 +21,12 @@ export interface ViewerHandle {
 }
 
 const LOAD_TIMEOUT_MS = 12000;
-/** 先読みの見込みに持たせる余裕（必要時刻の何割までに読み終わる見込みなら開始するか） */
-const PREFETCH_MARGIN = 0.6;
+/** ズーム中の通信待ちを避けるため、先読みの取得処理が終わってから演出を始める。 */
+const PREFETCH_MARGIN = 0;
 /** 回線が極端に遅いときでも、これ以上は待たずに始める */
 const PREFETCH_MAX_WAIT_MS = 15000;
 /** 最終画面の地図（B）の見込みに持たせる余裕（着地時刻の何割までに整う見込みなら開始するか） */
-const FINAL_MARGIN = 0.5;
+const FINAL_MARGIN = 0.25;
 const SLOW_NOTICE_MS = 6000;
 
 export function nameSizeClass(name: string): string {
@@ -192,7 +192,7 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
 
   // イベント名は最初から最後まで上部タイトルとして出しておく
   const eventTitle = place.event
-    ? h('header', { class: 'event-title' }, h('div', { class: 'ribbon-wrap' }, h('div', { class: 'ribbon' }, h('span', { class: 'ribbon-spark', 'aria-hidden': 'true' }, '✦'), h('span', { class: 'event-title-icon', 'aria-hidden': 'true' }, '🥳'), h('h1', {}, place.event), h('span', { class: 'ribbon-spark', 'aria-hidden': 'true' }, '✦'))))
+    ? h('header', { class: 'event-title' }, h('div', { class: 'ribbon-wrap' }, h('div', { class: 'ribbon' }, h('span', { class: 'ribbon-spark', 'aria-hidden': 'true' }, '✦'), h('span', { class: 'event-title-icon', 'aria-hidden': 'true' }, '🥳'), h('h1', { title: place.event }, place.event), h('span', { class: 'ribbon-spark', 'aria-hidden': 'true' }, '✦'))))
     : null;
 
   // ---- 読み込みの進み具合（段階ごとの目安。次の段階の手前までは少しずつ進める）----
@@ -222,6 +222,21 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
 
   const viewer = h('div', { class: 'viewer', 'data-phase': 'loading' }, stage, loading, eventTitle, sheet, controls, recenterBtn, closeBtn);
   root.append(viewer);
+
+  // リボンの残り幅に合わせて縮小し、イベント名を常に1行で収める。
+  const eventHeading = eventTitle?.querySelector('h1');
+  const fitEventTitle = () => {
+    if (!alive || !eventHeading) return;
+    eventHeading.style.fontSize = '';
+    let size = parseFloat(getComputedStyle(eventHeading).fontSize);
+    for (let i = 0; i < 3 && eventHeading.scrollWidth > eventHeading.clientWidth; i++) {
+      if (eventHeading.clientWidth <= 1) break;
+      size *= (eventHeading.clientWidth - 1) / eventHeading.scrollWidth;
+      eventHeading.style.fontSize = `${size}px`;
+    }
+  };
+  fitEventTitle();
+  void document.fonts.ready.then(fitEventTitle);
 
   // 演出前は結果UIを隠しておく
   card.style.visibility = 'hidden';
@@ -348,8 +363,8 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
         style: { ...style, projection: { type: 'globe' } },
         center: [place.lng, place.lat],
         zoom: 1,
-        // 一気に寄るときに通り過ぎる倍率のタイル要求は捨てる（最後は B に切り替えるので A は粗くてよい）
-        cancelPendingTileRequestsWhileZooming: true,
+        // 途中の倍率のタイルも残し、詳細タイルの解析中は親タイルを表示する。
+        cancelPendingTileRequestsWhileZooming: false,
       });
     } catch {
       return showFallback('地図を初期化できませんでした。');
@@ -417,16 +432,16 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
       document.fonts?.load('1em "Dela Gothic One"', `${SHOW.lines.first}${SHOW.lines.second}`).catch(() => undefined),
       new Promise((r) => setTimeout(r, 1500)),
     ]);
-    // ズーム1・2段目のタイル（A が使う）は裏で先読みする。最終画面は B 自身が読み込む。
-    const st = SHOW.stages;
+    // 最終段までの途中の倍率も含め、画面外に余裕を持たせて先読みする。
+    // 最終画面は B 自身でも読み込み・解析する。
     const prefetcherReady = mod.resolveTileTemplates(style).then((templates) => {
-      const around = (zoom: number, r: number) => mod.tileUrlsAround(templates, place.lng, place.lat, zoom, r);
+      const radius = mod.prefetchRadius(stage.clientWidth, stage.clientHeight);
       const groups = reduced
         ? []
-        : [
-            { urls: around(st[0].zoom ?? 4.6, 0.5), needAtMs: st[0].start + st[0].move * 0.3 },
-            { urls: around(st[1].zoom ?? 10.2, 0.5), needAtMs: st[1].start + st[1].move * 0.3 },
-          ];
+        : mod.zoomPrefetchSteps(SHOW.stages, place.zoom).map(({ zoom, needAtMs }) => ({
+            urls: mod.tileUrlsAround(templates, place.lng, place.lat, zoom, radius),
+            needAtMs,
+          }));
       const p = new mod.TilePrefetcher(groups, 2);
       p.start();
       void loaded.then(() => p.setConcurrency(4));
@@ -455,7 +470,7 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
       );
     };
 
-    // 「必要になる時刻までに整う見込み」が立つまで待つ（ここが 60%→100%）
+    // ズーム経路の先読み完了と、最終画面が余裕を持って整う見込みを待つ（60%→100%）。
     const waitStart = performance.now();
     for (;;) {
       const a = prefetcher.status(PREFETCH_MARGIN);
@@ -506,12 +521,14 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
   })();
 
   const onResize = () => {
+    fitEventTitle();
     show?.handleResize();
     updateRecenter();
   };
   window.addEventListener('resize', onResize);
   window.addEventListener('orientationchange', onResize);
   const ro = new ResizeObserver(() => {
+    fitEventTitle();
     viewer.style.setProperty('--sheet-h', `${sheet.offsetHeight}px`);
     if (eventTitle) viewer.style.setProperty('--top-inset', `${getTopInset() - 6}px`);
     if (phase === 'settled') map?.setPadding(getPadding());

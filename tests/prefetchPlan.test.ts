@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { startReadiness } from '../src/map/prefetchPlan';
+import { prefetchRadius, startReadiness, zoomPrefetchSteps } from '../src/map/prefetchPlan';
+import { SHOW } from '../src/show/config';
 
 const groups = [
   { count: 4, needAtMs: 3400 }, // ズーム1段目
@@ -48,5 +49,26 @@ describe('演出を始めてよいかの見積もり', () => {
     const tight = startReadiness(groups, 4, 600, 0.3);
     expect(loose.ready).toBe(true);
     expect(tight.ready).toBe(false);
+  });
+
+  it('margin=0 では高速回線でも全件取得まで待つ', () => {
+    expect(startReadiness(groups, 17, 300, 0).ready).toBe(false);
+    expect(startReadiness(groups, 18, 300, 0)).toEqual({ ready: true, fraction: 1 });
+    expect(startReadiness([], 0, 0, 0).ready).toBe(true);
+  });
+});
+
+describe('ズーム経路の先読み', () => {
+  it.each([15, 17, 19])('最終倍率 z%d まで途中の倍率を抜かさず読む', (finalZoom) => {
+    const steps = zoomPrefetchSteps(SHOW.stages, finalZoom);
+    expect(steps.map((s) => s.zoom)).toEqual(Array.from({ length: finalZoom }, (_, i) => i + 1));
+    expect(steps.find((s) => s.zoom === 5)?.needAtMs).toBe(SHOW.stages[1].start);
+    expect(steps.find((s) => s.zoom === 11)?.needAtMs).toBe(SHOW.stages[2].start);
+  });
+
+  it.each([[390, 844], [844, 390], [1440, 900]])('画面 %dx%d の回転と画面外の余白を覆う', (width, height) => {
+    const radius = prefetchRadius(width, height);
+    expect(radius * 512).toBeGreaterThanOrEqual(Math.hypot(width, height) / 2 + 256);
+    expect(prefetchRadius(height, width)).toBe(radius);
   });
 });
