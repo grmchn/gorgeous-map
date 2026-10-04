@@ -47,7 +47,9 @@ export class ShowSound {
   /** スキップ時：鳴っている音を止め、着地の「バーン」だけ鳴らす */
   playFinale(): void {
     if (!this.openBus()) return;
-    this.bang(this.ctx!.currentTime + 0.02);
+    const t = this.ctx!.currentTime + 0.02;
+    this.jaHit(t);
+    this.bang(t + (SHOW.arrival.cardBang - SHOW.arrival.cardStart) / 1000);
   }
 
   stop(): void {
@@ -348,21 +350,29 @@ export class ShowSound {
     this.noise(t, 0.05, { filter: 'highpass', freq: 3000, gain: 0.5 });
   }
 
+  /** 「ジャ・ジャーン」の1発目「ジャ」：同じ主和音を短く強く */
+  jaHit(t: number): void {
+    this.brass(t, 0.2, [48, 55, 60, 64, 67, 72, 76], 0.22, { attack: 0.005, wet: 0.25, bright: 7500, hold: 0.4 });
+    this.kick(t, 0.8, 38);
+    this.snare(t, 0.32);
+    this.crash(t, 0.14, 0, 0.25);
+  }
+
   /**
-   * 最後の「バーン」：主和音のブラス＋ティンパニ＋シンバル（スキップ時もこれ）。
-   * 伸ばさず、アタックを強くしてスパッと切る。
+   * 「ジャ・ジャーン」の2発目「ジャーン」（スキップ時も「ジャ」と組で鳴らす）。
+   * 1.3 秒ほどで、伸ばしすぎず短すぎない長さ。
    */
   bang(t: number): void {
-    this.brass(t, 0.62, [48, 55, 60, 64, 67, 72, 76, 79], 0.24, { attack: 0.006, wet: 0.3, bright: 8000, hold: 0.3 });
-    this.tone(t, 0.45, { type: 'sine', freq: midi(24), gain: 0.55 });
-    this.timpani(t, 0.8, 36);
+    this.brass(t, 1.3, [48, 55, 60, 64, 67, 72, 76, 79], 0.23, { attack: 0.006, wet: 0.4, bright: 8000, hold: 0.4 });
+    this.strings(t, 1.25, [72, 76, 79, 84], 0.04, 0.03);
+    this.tone(t, 0.9, { type: 'sine', freq: midi(24), gain: 0.55 });
+    this.timpani(t, 0.85, 36);
     this.kick(t, 1, 30);
     this.noise(t, 0.05, { filter: 'highpass', freq: 2500, gain: 0.55 });
-    this.crash(t, 0.3, -0.35, 0.9);
-    this.crash(t + 0.02, 0.24, 0.35, 0.9);
-    // 短いキラッ
-    [88, 91, 96].forEach((n, i) =>
-      this.tone(t + 0.12 + i * 0.05, 0.25, { type: 'triangle', freq: midi(n), gain: 0.05, pan: i % 2 ? 0.4 : -0.4, wet: 0.3 }),
+    this.crash(t, 0.3, -0.35, 1.4);
+    this.crash(t + 0.02, 0.24, 0.35, 1.4);
+    [84, 88, 91, 96].forEach((n, i) =>
+      this.tone(t + 0.35 + i * 0.06, 0.4, { type: 'triangle', freq: midi(n), gain: 0.05, pan: i % 2 ? 0.4 : -0.4, wet: 0.4 }),
     );
   }
 }
@@ -483,17 +493,16 @@ function score(): ScoreEvent[] {
     s.kick(t, 0.85);
     s.timpani(t, 0.5, 31);
   });
-  add(ar.cardStart, (s, t) => {
-    s.brass(t, 0.16, [55, 59, 62, 67, 71], 0.2, { attack: 0.008, wet: 0.3, bright: 6000 });
-    s.snare(t, 0.3);
-  });
-  // 「バ」と「バーン」の間をつなぐ短いドラムフィル
-  for (let at = ar.cardStart + 60; at < ar.cardBang - 20; at += 35) add(at, (s, t) => s.snare(t, 0.18));
+  // 「ジャ・ジャーン！」：同じ和音を2回。1発目は短く、2発目は約1.3秒
+  add(ar.cardStart, (s, t) => s.jaHit(t));
   add(ar.cardBang, (s, t) => s.bang(t));
   return ev;
 }
 
-/** 軽減モーション時：短い「バーン」だけ */
+/** 軽減モーション時：「ジャ・ジャーン」だけ */
 function reducedScore(): ScoreEvent[] {
-  return [{ at: 100, play: (s, t) => s.bang(t) }];
+  return [
+    { at: 100, play: (s, t) => s.jaHit(t) },
+    { at: 270, play: (s, t) => s.bang(t) },
+  ];
 }

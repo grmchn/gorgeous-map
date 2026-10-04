@@ -76,3 +76,10 @@ export const GLOBE_SPINNER_SVG = `
   <path d="M10 18 q8 -6 14 0 t12 2 q2 6 -4 9 t-10 6 q-6 -3 -10 -9z" fill="#4fd18b"/>
   <ellipse cx="24" cy="24" rx="20" ry="8" fill="none" stroke="#fff" stroke-opacity="0.35" stroke-width="1.5"/>
 </svg>`;
+
+/** 読み込み中のプログレスリング（.ring-fg の stroke-dashoffset で進み具合を表す） */
+export const PROGRESS_RING_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100" class="ring" aria-hidden="true">
+  <circle cx="50" cy="50" r="44" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="6"/>
+  <circle class="ring-fg" cx="50" cy="50" r="44" fill="none" stroke="#ffc61a" stroke-width="6" stroke-linecap="round" transform="rotate(-90 50 50)"/>
+</svg>`;

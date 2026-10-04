@@ -578,8 +578,40 @@ textarea {
   color: #fff;
   font-weight: 700;
 }
+.loading-ring {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  display: grid;
+  place-items: center;
+}
+.loading-ring .ring {
+  position: absolute;
+  inset: 0;
+  filter: drop-shadow(0 0 6px rgba(255, 198, 26, 0.55));
+}
+.loading-ring .ring-fg {
+  transition: stroke-dashoffset 0.15s linear;
+}
 .loading-globe {
+  display: grid;
+  place-items: center;
   animation: spin 1.6s linear infinite;
+}
+.loading-globe svg {
+  width: 56px;
+  height: 56px;
+}
+.loading-text {
+  font-family: var(--font-impact);
+  font-weight: 400;
+  letter-spacing: 0.08em;
+}
+.loading-pct {
+  margin-top: -6px;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
 }
 .loading-slow {
   display: flex;

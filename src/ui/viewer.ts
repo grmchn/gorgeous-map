@@ -4,7 +4,7 @@ import { SHOW } from '../show/config';
 import { Show, type Phase } from '../show/show';
 import { h, prefersReducedMotion, svg } from './dom';
 import { ShowSound } from '../show/sound';
-import { FINGER_SVG, GLOBE_SPINNER_SVG, PIN_SVG, POKE_SVG } from './icons';
+import { FINGER_SVG, GLOBE_SPINNER_SVG, PIN_SVG, POKE_SVG, PROGRESS_RING_SVG } from './icons';
 import { copyLink, shareLink } from './share';
 
 export interface ViewerOptions {
@@ -154,8 +154,14 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
   const loading = h(
     'div',
     { class: 'loading', role: 'status' },
-    h('div', { class: 'loading-globe' }, svg(GLOBE_SPINNER_SVG)),
-    h('div', { class: 'loading-text' }, '準備中…'),
+    h(
+      'div',
+      { class: 'loading-ring', role: 'progressbar', 'aria-label': '読み込み中', 'aria-valuemin': '0', 'aria-valuemax': '100' },
+      svg(PROGRESS_RING_SVG),
+      h('div', { class: 'loading-globe' }, svg(GLOBE_SPINNER_SVG)),
+    ),
+    h('div', { class: 'loading-text' }, 'loading...'),
+    h('div', { class: 'loading-pct' }, '0%'),
   );
   const closeBtn =
     opts.mode === 'preview'
@@ -166,6 +172,31 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
   const eventTitle = place.event
     ? h('header', { class: 'event-title' }, h('div', { class: 'ribbon-wrap' }, h('div', { class: 'ribbon' }, h('span', { class: 'ribbon-spark', 'aria-hidden': 'true' }, '✦'), h('span', { class: 'event-title-icon', 'aria-hidden': 'true' }, '🥳'), h('h1', {}, place.event), h('span', { class: 'ribbon-spark', 'aria-hidden': 'true' }, '✦'))))
     : null;
+
+  // ---- 読み込みの進み具合（段階ごとの目安。次の段階の手前までは少しずつ進める）----
+  const ringEl = loading.querySelector<HTMLElement>('.loading-ring')!;
+  const ringFg = loading.querySelector<SVGCircleElement>('.ring-fg')!;
+  const pctEl = loading.querySelector<HTMLElement>('.loading-pct')!;
+  const RING_LEN = 2 * Math.PI * 44;
+  let shown = 0;
+  let target = 0;
+  let ceiling = 0.12;
+  const setProgress = (value: number, next = value) => {
+    target = Math.max(target, value);
+    ceiling = Math.max(ceiling, next);
+  };
+  const progressTimer = window.setInterval(() => {
+    target += (ceiling - target) * 0.025;
+    shown += (target - shown) * 0.3;
+    const pct = Math.min(100, Math.round(shown * 100));
+    ringFg.style.strokeDashoffset = String(RING_LEN * (1 - shown));
+    pctEl.textContent = `${pct}%`;
+    ringEl.setAttribute('aria-valuenow', String(pct));
+  }, 50);
+  ringFg.style.strokeDasharray = String(RING_LEN);
+  ringFg.style.strokeDashoffset = String(RING_LEN);
+  const stopProgress = () => clearInterval(progressTimer);
+  cleanups.push(stopProgress);
 
   const viewer = h('div', { class: 'viewer', 'data-phase': 'loading' }, stage, loading, eventTitle, sheet, controls, recenterBtn, closeBtn);
   root.append(viewer);
@@ -216,6 +247,7 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
   /** 地図が使えないときの結果表示（場所の情報には必ずたどり着けるようにする） */
   function showFallback(reason: string) {
     if (!alive) return;
+    stopProgress();
     show?.destroy();
     show = null;
     try {
@@ -261,8 +293,10 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
     }, SLOW_NOTICE_MS);
     cleanups.push(() => clearTimeout(slowTimer));
 
+    setProgress(0.04, 0.15);
     const mod = await import('../map/mapSetup').catch(() => null);
     if (!alive) return;
+    setProgress(0.15, 0.3);
     if (!mod) return showFallback('地図の部品を読み込めませんでした。通信状況を確認してください。');
     if (!mod.webglSupported()) {
       return showFallback('この端末・ブラウザでは地図（WebGL）を表示できません。');
@@ -275,6 +309,7 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
       return showFallback('地図を読み込めませんでした。通信状況を確認してください。');
     }
     if (!alive) return;
+    setProgress(0.3, 0.6);
 
     const { maplibregl } = mod;
     let m: MlMap;
@@ -325,6 +360,7 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
     const [ok] = await Promise.all([loaded, fontsReady, prefetch]);
     if (!alive) return;
     if (!ok) return showFallback('地図を読み込めませんでした。通信状況を確認してください。');
+    setProgress(0.6, reduced ? 0.97 : 0.85);
 
     // 最終画面（と途中の街レベル）を先に描いておく。タイルの取得だけでなく解析・文字の準備まで
     // 済ませた状態でキャッシュに残るので、演出の最後で地図が遅れて出るのを防げる。
@@ -335,9 +371,15 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
       m.jumpTo({ center: [place.lng, place.lat], zoom, bearing: 0, pitch: 0, padding: getPadding() });
       await waitForIdle(m, zoom === place.zoom ? 6000 : 3000);
       if (!alive) return;
+      setProgress(zoom === place.zoom ? 0.85 : 1, 0.97);
     }
     mapEl.style.opacity = '';
 
+    // 100% を一瞬見せてから始める
+    setProgress(1, 1);
+    await new Promise((r) => setTimeout(r, 220));
+    if (!alive) return;
+    stopProgress();
     loading.remove();
     show = new Show(
       m,
