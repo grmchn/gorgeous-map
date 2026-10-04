@@ -4,7 +4,7 @@
  */
 
 /** 地球がグルグル回る時間。指差し以降はすべてこの後ろにずれる。 */
-const SPIN_END = 1400;
+const SPIN_END = 2800;
 /** SPIN_END を基準にした相対時刻 */
 const at = (ms: number) => SPIN_END + ms;
 
@@ -16,9 +16,9 @@ export const SHOW = {
    * spinDeg: 回転量（度）。720 = 2周。tiltDeg: 回転中だけ地軸を少し傾けて勢いを出す。
    * brakeAt: 一定速度で回る割合（残りでブレーキ）。overshoot: 止まるときの行き過ぎの強さ。
    */
-  globeIn: { start: 0, end: SPIN_END, spinDeg: 900, tiltDeg: 18, zoomFrom: -1.1, brakeAt: 0.6, overshoot: 1.2 },
+  globeIn: { start: 0, end: SPIN_END, spinDeg: 1800, tiltDeg: 18, zoomFrom: -1.1, brakeAt: 0.72, overshoot: 1.2 },
   /** 「そぉ～れ」：回り始めと同時に出て、少し回ったところで消える（「ここぉ！」とは同時に出さない） */
-  callFirst: { in: 100, out: 850 },
+  callFirst: { in: 100, out: 1100 },
   /** 地球が止まってから指が入り、地点を指す */
   finger: { enter: at(0), arrive: at(180) },
   /** 「ここぉ！」：指が刺さった瞬間 */

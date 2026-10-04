@@ -253,8 +253,8 @@ export class ShowSound {
     this.noise(t, open ? 0.18 : 0.04, { filter: 'highpass', freq: 8000, gain, pan: 0.25 });
   }
 
-  crash(t: number, gain = 0.3, pan = 0): void {
-    this.noise(t, 2.2, { filter: 'highpass', freq: 4200, gain, pan, wet: 0.5 });
+  crash(t: number, gain = 0.3, pan = 0, dur = 2.2): void {
+    this.noise(t, dur, { filter: 'highpass', freq: 4200, gain, pan, wet: 0.5 });
     this.noise(t, 0.6, { filter: 'bandpass', freq: 8500, q: 0.5, gain: gain * 0.6, pan, wet: 0.3 });
   }
 
@@ -267,7 +267,13 @@ export class ShowSound {
   }
 
   /** ブラス風の和音（のこぎり波を少しずらして重ね、フィルタを開いて「パァン」と鳴らす） */
-  brass(t: number, dur: number, notes: number[], gain: number, o: { attack?: number; wet?: number; bright?: number } = {}): void {
+  brass(
+    t: number,
+    dur: number,
+    notes: number[],
+    gain: number,
+    o: { attack?: number; wet?: number; bright?: number; hold?: number } = {},
+  ): void {
     const ctx = this.ctx!;
     const f = ctx.createBiquadFilter();
     f.type = 'lowpass';
@@ -280,7 +286,7 @@ export class ShowSound {
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime(gain, t + a);
-    g.gain.setValueAtTime(gain, t + dur * 0.55);
+    g.gain.setValueAtTime(gain, t + dur * (o.hold ?? 0.55));
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     f.connect(g);
     this.connectOut(g, t, { wet: o.wet ?? 0.35 });
@@ -342,18 +348,21 @@ export class ShowSound {
     this.noise(t, 0.05, { filter: 'highpass', freq: 3000, gain: 0.5 });
   }
 
-  /** 最後の「バーン」：主和音のブラス＋ストリングス＋ティンパニ＋シンバル（スキップ時もこれ） */
+  /**
+   * 最後の「バーン」：主和音のブラス＋ティンパニ＋シンバル（スキップ時もこれ）。
+   * 伸ばさず、アタックを強くしてスパッと切る。
+   */
   bang(t: number): void {
-    this.brass(t, 2.4, [48, 55, 60, 64, 67, 72, 74, 76, 79], 0.2, { attack: 0.012, wet: 0.7, bright: 7000 });
-    this.strings(t, 2.6, [60, 64, 67, 72, 76, 84], 0.06, 0.08);
-    this.tone(t, 2.2, { type: 'sine', freq: midi(24), gain: 0.5, wet: 0.2 });
-    this.timpani(t, 0.9, 36);
+    this.brass(t, 0.62, [48, 55, 60, 64, 67, 72, 76, 79], 0.24, { attack: 0.006, wet: 0.3, bright: 8000, hold: 0.3 });
+    this.tone(t, 0.45, { type: 'sine', freq: midi(24), gain: 0.55 });
+    this.timpani(t, 0.8, 36);
     this.kick(t, 1, 30);
-    this.crash(t, 0.32, -0.4);
-    this.crash(t + 0.03, 0.26, 0.4);
-    // 余韻のキラキラ
-    [84, 88, 91, 96, 100].forEach((n, i) =>
-      this.tone(t + 0.5 + i * 0.07, 0.6, { type: 'triangle', freq: midi(n), gain: 0.06, pan: i % 2 ? 0.4 : -0.4, wet: 0.6 }),
+    this.noise(t, 0.05, { filter: 'highpass', freq: 2500, gain: 0.55 });
+    this.crash(t, 0.3, -0.35, 0.9);
+    this.crash(t + 0.02, 0.24, 0.35, 0.9);
+    // 短いキラッ
+    [88, 91, 96].forEach((n, i) =>
+      this.tone(t + 0.12 + i * 0.05, 0.25, { type: 'triangle', freq: midi(n), gain: 0.05, pan: i % 2 ? 0.4 : -0.4, wet: 0.3 }),
     );
   }
 }
@@ -397,9 +406,13 @@ function score(): ScoreEvent[] {
   });
   // きらびやかなアルペジオ（C メジャー、だんだん上へ）
   const arp = [60, 64, 67, 72, 64, 67, 72, 76, 67, 72, 76, 79, 72, 76, 79, 84];
-  arp.forEach((n, i) =>
-    add(120 + i * 75, (s, t) => s.tone(t, 0.12, { type: 'triangle', freq: midi(n), gain: 0.05, pan: i % 2 ? 0.3 : -0.3, wet: 0.3 })),
-  );
+  const arpStep = 75;
+  const arpCount = Math.floor((spinEnd - 220) / arpStep);
+  for (let i = 0; i < arpCount; i++) {
+    // 回転の長さに合わせて、上の音域へ少しずつ伸ばしていく
+    const n = arp[Math.floor((i / arpCount) * arp.length)] + (i % 2 ? 0 : 12 * Math.floor(((i / arpCount) * 2) % 2));
+    add(120 + i * arpStep, (s, t) => s.tone(t, 0.12, { type: 'triangle', freq: midi(n), gain: 0.045, pan: i % 2 ? 0.3 : -0.3, wet: 0.3 }));
+  }
   // 止まる「キュッ」
   add(spinEnd - 80, (s, t) => s.tone(t, 0.12, { type: 'sine', freq: 1700, freqEnd: 480, gain: 0.28 }));
 

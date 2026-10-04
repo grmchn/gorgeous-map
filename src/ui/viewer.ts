@@ -164,7 +164,7 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
 
   // イベント名は最初から最後まで上部タイトルとして出しておく
   const eventTitle = place.event
-    ? h('header', { class: 'event-title' }, h('div', { class: 'ribbon-wrap' }, h('div', { class: 'ribbon' }, h('span', { class: 'event-title-icon', 'aria-hidden': 'true' }, '🥳'), h('h1', {}, place.event))))
+    ? h('header', { class: 'event-title' }, h('div', { class: 'ribbon-wrap' }, h('div', { class: 'ribbon' }, h('span', { class: 'ribbon-spark', 'aria-hidden': 'true' }, '✦'), h('span', { class: 'event-title-icon', 'aria-hidden': 'true' }, '🥳'), h('h1', {}, place.event), h('span', { class: 'ribbon-spark', 'aria-hidden': 'true' }, '✦'))))
     : null;
 
   const viewer = h('div', { class: 'viewer', 'data-phase': 'loading' }, stage, loading, eventTitle, sheet, controls, recenterBtn, closeBtn);
