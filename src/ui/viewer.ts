@@ -21,6 +21,10 @@ export interface ViewerHandle {
 }
 
 const LOAD_TIMEOUT_MS = 12000;
+/** 先読みの見込みに持たせる余裕（必要時刻の何割までに読み終わる見込みなら開始するか） */
+const PREFETCH_MARGIN = 0.6;
+/** 回線が極端に遅いときでも、これ以上は待たずに始める */
+const PREFETCH_MAX_WAIT_MS = 12000;
 const SLOW_NOTICE_MS = 6000;
 
 export function nameSizeClass(name: string): string {
@@ -297,6 +301,7 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
     const mod = await import('../map/mapSetup').catch(() => null);
     if (!alive) return;
     setProgress(0.15, 0.3);
+    performance.mark('gm:module');
     if (!mod) return showFallback('地図の部品を読み込めませんでした。通信状況を確認してください。');
     if (!mod.webglSupported()) {
       return showFallback('この端末・ブラウザでは地図（WebGL）を表示できません。');
@@ -310,6 +315,7 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
     }
     if (!alive) return;
     setProgress(0.3, 0.6);
+    performance.mark('gm:style');
 
     const { maplibregl } = mod;
     let m: MlMap;
@@ -321,8 +327,9 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
         zoom: 1,
         attributionControl: false,
         interactive: true,
-        cancelPendingTileRequestsWhileZooming: false,
-        // 先読みした最終画面・途中段のタイルを演出中に捨てないよう、キャッシュを大きめに
+        // 一気に寄るときに通り過ぎる倍率のタイル要求は捨て、最終画面のタイルを先に読む
+        cancelPendingTileRequestsWhileZooming: true,
+        // 読み込んだタイルを演出中に捨てないよう、キャッシュを大きめに
         maxTileCacheSize: 1200,
         maxTileCacheZoomLevels: 20,
         maxPitch: 0,
@@ -353,31 +360,54 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
       document.fonts?.load('1em "Dela Gothic One"', `${SHOW.lines.first}${SHOW.lines.second}ズーン`).catch(() => undefined),
       new Promise((r) => setTimeout(r, 1500)),
     ]);
-    const prefetch = reduced
-      ? mod.prefetchTiles(style, place.lng, place.lat, [place.zoom], 2000)
-      : mod.prefetchTiles(style, place.lng, place.lat, [SHOW.stages[0].zoom ?? 5, SHOW.stages[1].zoom ?? 10, place.zoom]);
+    // 後で必要になるタイル（ズーム各段・最終画面）は裏で読み込み始め、演出開始後も読み続ける。
+    // 演出の前半（「そぉ～れ」→ 回転 →「ここぉ！」）は時間が決まっていて地球しか映らないので、
+    // その間に読み終わる見込みの分だけ、開始前に待つ量を減らせる。
+    const st = SHOW.stages;
+    const prefetcherReady = mod.resolveTileTemplates(style).then((templates) => {
+      const around = (zoom: number, r: number) => mod.tileUrlsAround(templates, place.lng, place.lat, zoom, r);
+      const finalUrls = [...around(place.zoom, 1), ...mod.glyphUrls(style)];
+      // 最後の段で通過する中間の倍率（z12・z13）も、最終画面の後に取っておく
+      const passUrls = [...around(13, 0.5), ...around(12, 0.5)];
+      const groups = reduced
+        ? [{ urls: finalUrls, needAtMs: 0 }] // 軽減モーションは最初から最終画面
+        : [
+            { urls: around(st[0].zoom ?? 4.6, 0.5), needAtMs: st[0].start + st[0].move * 0.3 },
+            { urls: around(st[1].zoom ?? 10.2, 0.5), needAtMs: st[1].start + st[1].move * 0.3 },
+            { urls: finalUrls, needAtMs: st[2].start + st[2].move * 0.5 },
+            { urls: passUrls, needAtMs: st[2].start + st[2].move * 0.5 },
+          ];
+      // 地球の初期表示が読み終わるまでは控えめに（2本）、その後は 6 本で取る
+      const p = new mod.TilePrefetcher(groups, 2);
+      p.start();
+      void loaded.then(() => p.setConcurrency(6));
+      cleanups.push(() => p.stop());
+      return p;
+    });
 
-    const [ok] = await Promise.all([loaded, fontsReady, prefetch]);
+    void loaded.then(() => performance.mark('gm:map-load'));
+    const [ok, , prefetcher] = await Promise.all([loaded, fontsReady, prefetcherReady]);
+    performance.mark('gm:blocking-done');
     if (!alive) return;
     if (!ok) return showFallback('地図を読み込めませんでした。通信状況を確認してください。');
-    setProgress(0.6, reduced ? 0.97 : 0.85);
+    setProgress(0.6, 0.7);
 
-    // 最終画面（と途中の街レベル）を先に描いておく。タイルの取得だけでなく解析・文字の準備まで
-    // 済ませた状態でキャッシュに残るので、演出の最後で地図が遅れて出るのを防げる。
-    // 結果がネタバレしないよう、その間は地図を見えなくしておく。
-    mapEl.style.opacity = '0';
-    const views = reduced ? [place.zoom] : [place.zoom, SHOW.stages[1].zoom ?? 10];
-    for (const zoom of views) {
-      m.jumpTo({ center: [place.lng, place.lat], zoom, bearing: 0, pitch: 0, padding: getPadding() });
-      await waitForIdle(m, zoom === place.zoom ? 6000 : 3000);
+    // 「必要になる時刻までに読み終わる見込み」が立つまで待つ（ここが 60%→100%）
+    const waitStart = performance.now();
+    for (;;) {
+      const s = prefetcher.status(PREFETCH_MARGIN);
+      setProgress(0.6 + 0.4 * s.fraction, 0.6 + 0.4 * Math.min(0.99, s.fraction + 0.15));
+      if (s.ready || performance.now() - waitStart > PREFETCH_MAX_WAIT_MS) {
+        performance.mark('gm:prefetch-ready');
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 80));
       if (!alive) return;
-      setProgress(zoom === place.zoom ? 0.85 : 1, 0.97);
     }
-    mapEl.style.opacity = '';
 
     // 100% を一瞬見せてから始める
     setProgress(1, 1);
-    await new Promise((r) => setTimeout(r, 220));
+    await new Promise((r) => setTimeout(r, 120));
     if (!alive) return;
     stopProgress();
     loading.remove();
@@ -454,18 +484,4 @@ function writeSoundPref(v: 'on' | 'off'): void {
   } catch {
     /* 保存できなくても動作には影響しない */
   }
-}
-
-/** 地図が描き終わる（タイルの読み込み・解析が済む）まで待つ。時間切れでも先に進む */
-function waitForIdle(map: MlMap, timeoutMs: number): Promise<void> {
-  return new Promise((resolve) => {
-    const timer = window.setTimeout(done, timeoutMs);
-    function done() {
-      clearTimeout(timer);
-      map.off('idle', done);
-      resolve();
-    }
-    map.once('idle', done);
-    map.triggerRepaint();
-  });
 }

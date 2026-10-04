@@ -117,6 +117,36 @@ function makeCity(lng, lat) {
   return L;
 }
 
+/** タイル1枚を作る関数と、liberty 相当のスタイルを返す（base はタイル・文字の配信元URL） */
+export function makeOmtSource({ lng, lat, base = 'https://tiles.openfreemap.org' }) {
+  const layers = makeCity(lng, lat);
+  const indexes = Object.fromEntries(
+    Object.entries(layers).map(([name, features]) => [
+      name,
+      new GeoJSONVT({ type: 'FeatureCollection', features }, { maxZoom: 14, indexMaxZoom: 4, tolerance: 2, extent: 4096, buffer: 64 }),
+    ]),
+  );
+  const style = {
+    version: 8,
+    sources: { openmaptiles: { type: 'vector', tiles: [`${base}/planet/{z}/{x}/{y}.pbf`], maxzoom: 14 } },
+    glyphs: `${base}/fonts/{fontstack}/{range}.pbf`,
+    layers: [
+      { id: 'x', type: 'line', source: 'openmaptiles', 'source-layer': 'transportation' },
+      { id: 'y', type: 'symbol', source: 'openmaptiles', 'source-layer': 'place', layout: { 'text-font': ['Noto Sans Regular'] } },
+      { id: 'z', type: 'symbol', source: 'openmaptiles', 'source-layer': 'place', layout: { 'text-font': ['Noto Sans Bold'] } },
+    ],
+  };
+  const tile = (z, x, y) => {
+    const tiles = {};
+    for (const [name, idx] of Object.entries(indexes)) {
+      const t = idx.getTile(z, x, y);
+      if (t) tiles[name] = t;
+    }
+    return Buffer.from(fromGeojsonVt(tiles, { version: 2, extent: 4096 }));
+  };
+  return { style, tile };
+}
+
 export async function installOmtMock(page, { lng, lat }) {
   const layers = makeCity(lng, lat);
   const indexes = Object.fromEntries(
