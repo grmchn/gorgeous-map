@@ -51,6 +51,14 @@ export interface ShowOptions {
   sound?: ShowSound;
   soundOn?: () => boolean;
   onPhase?: (phase: Phase) => void;
+  /**
+   * 最終画面専用の地図（B）。演出の地図（A）とは別に、最初から最終画面のカメラで裏に置いて読み込ませておき、
+   * 着地の瞬間（A が同じカメラになった時）に B へ切り替える。B の準備が間に合わなければ、整った時点で切り替える。
+   */
+  finalMap?: MlMap;
+  isFinalReady?: () => boolean;
+  /** B に切り替わったとき（結果画面の操作対象が B になる） */
+  onSwap?: (map: MlMap) => void;
 }
 
 /** 指アイコンの指先位置（要素左上からのpx）と向き */
@@ -71,6 +79,11 @@ export class Show {
   private destroyed = false;
   private finalT: number;
   private zoomList: number[];
+  /** 最終画面の地図（B）に切り替え済みか。再生し直しで false に戻す */
+  private swapped = false;
+  private swapAt: number;
+  /** 再生ごとの番号（古い再生の「あとで切り替え」を無効にする） */
+  private runId = 0;
   /** 毎フレームのレイアウト読み取りを避けるため、サイズはまとめて測っておく */
   private sizes = {
     w: 0,
@@ -83,12 +96,14 @@ export class Show {
   };
 
   constructor(
-    private map: MlMap,
+    private globeMap: MlMap,
     private els: ShowElements,
     private place: Place,
     private opts: ShowOptions,
   ) {
     this.finalT = opts.reducedMotion ? REDUCED.end : SHOW.total;
+    // A が最終カメラ（倍率・方位とも）に揃うのは最後の段の「間」が終わる時刻＝到着の開始
+    this.swapAt = opts.reducedMotion ? 0 : SHOW.arrival.start;
     this.zoomList = SHOW.stages.map((s) => s.zoom ?? place.zoom);
     this.fx = new Fx(els.bgCanvas, els.fxCanvas);
     try {
@@ -100,6 +115,11 @@ export class Show {
 
   get currentPhase(): Phase {
     return this.phase;
+  }
+
+  /** 今画面に出ている地図（切り替え前は A、後は B） */
+  get map(): MlMap {
+    return this.swapped && this.opts.finalMap ? this.opts.finalMap : this.globeMap;
   }
 
   /** 演出の経過時間（ms）。終了後は終端の時刻 */
@@ -121,6 +141,9 @@ export class Show {
   play(): void {
     if (this.destroyed) return;
     cancelAnimationFrame(this.raf);
+    this.runId++;
+    this.unswap();
+    this.setEffectCanvasesVisible(true);
     this.setInteractive(false);
     this.measure();
     this.startAt = performance.now();
@@ -191,8 +214,57 @@ export class Show {
     this.els.skip.hidden = true;
     this.lines?.clear();
     this.fx.clear();
+    // 演出用のキャンバスは結果画面では使わないので隠す（GPU メモリが少ない端末で古い内容が残るのも防ぐ）
+    this.setEffectCanvasesVisible(false);
     this.els.stage.style.transform = '';
     this.setInteractive(true);
+    // 最終画面の地図（B）がまだ整っていなければ、整った時点で切り替える
+    const B = this.opts.finalMap;
+    if (B && !this.swapped) {
+      const run = this.runId;
+      const tryLater = () => {
+        if (this.destroyed || run !== this.runId || this.swapped) return;
+        if (this.opts.isFinalReady?.() ?? true) {
+          this.doSwap();
+          this.setInteractive(true);
+        } else B.once('idle', tryLater);
+      };
+      B.once('idle', tryLater);
+    }
+  }
+
+  /** 着地の瞬間に最終画面の地図（B）へ切り替える（準備ができていれば） */
+  private updateSwap(t: number): void {
+    if (this.swapped || !this.opts.finalMap || t < this.swapAt) return;
+    if (!(this.opts.isFinalReady?.() ?? true)) return;
+    this.doSwap();
+  }
+
+  private doSwap(): void {
+    const B = this.opts.finalMap;
+    if (!B) return;
+    this.swapped = true;
+    const { lng, lat } = this.place;
+    B.jumpTo({ center: [lng, lat], zoom: this.place.zoom, bearing: 0, pitch: 0, padding: this.opts.getPadding() });
+    B.getContainer().classList.remove('map-standby');
+    this.globeMap.getContainer().classList.add('map-standby');
+    this.opts.onSwap?.(B);
+  }
+
+  /** 再生し直し：演出の地図（A）を前に戻し、B は最終カメラに戻して裏で待たせる */
+  private unswap(): void {
+    const B = this.opts.finalMap;
+    if (!B) return;
+    this.swapped = false;
+    B.getContainer().classList.add('map-standby');
+    this.globeMap.getContainer().classList.remove('map-standby');
+    const { lng, lat } = this.place;
+    B.jumpTo({ center: [lng, lat], zoom: this.place.zoom, bearing: 0, pitch: 0, padding: this.opts.getPadding() });
+    this.opts.onSwap?.(this.globeMap);
+  }
+
+  private setEffectCanvasesVisible(on: boolean): void {
+    for (const c of [this.els.canvas, this.els.bgCanvas, this.els.fxCanvas]) c.style.visibility = on ? '' : 'hidden';
   }
 
   private setPhase(p: Phase): void {
@@ -202,15 +274,18 @@ export class Show {
   }
 
   private setInteractive(on: boolean): void {
-    const m = this.map;
-    const hs = [m.dragPan, m.scrollZoom, m.boxZoom, m.doubleClickZoom, m.keyboard, m.touchZoomRotate];
-    for (const h of hs) {
-      if (on) h.enable();
-      else h.disable();
+    // 操作できるのは画面に出ている地図だけ
+    for (const m of [this.globeMap, this.opts.finalMap]) {
+      if (!m) continue;
+      const enable = on && m === this.map;
+      for (const h of [m.dragPan, m.scrollZoom, m.boxZoom, m.doubleClickZoom, m.keyboard, m.touchZoomRotate]) {
+        if (enable) h.enable();
+        else h.disable();
+      }
+      m.dragRotate.disable();
+      m.touchPitch.disable();
+      if (enable) m.touchZoomRotate.disableRotation();
     }
-    m.dragRotate.disable();
-    m.touchPitch.disable();
-    if (on) m.touchZoomRotate.disableRotation();
   }
 
   // ---------------------------------------------------------------------------
@@ -221,6 +296,7 @@ export class Show {
     if (this.opts.reducedMotion) return this.renderReduced(t);
 
     this.setPhase(phaseAt(t));
+    this.updateSwap(t);
     const { lng, lat } = this.place;
     const z0 = this.globeZoom();
     const zoom = this.zoomAt(t, z0);
@@ -257,6 +333,7 @@ export class Show {
 
   private renderReduced(t: number): void {
     this.setPhase('arrival');
+    this.updateSwap(t);
     this.map.jumpTo({
       center: [this.place.lng, this.place.lat],
       zoom: this.place.zoom,

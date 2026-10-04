@@ -126,6 +126,11 @@ textarea {
   position: absolute;
   inset: 0;
 }
+/* 裏で待機中の地図（最終画面用 B、または切り替え後の A）。描画・読み込みは続けたまま見えなくする */
+.stage .viewer-map.map-standby {
+  opacity: 0;
+  pointer-events: none;
+}
 .viewer-map .maplibregl-canvas {
   outline: none;
 }

@@ -5,6 +5,8 @@ import { buildGoogleLikeStyle, flattenBuildings, installPoiIcons } from './googl
 import workerUrl from './maplibreWorker?worker&url';
 import { startReadiness, type PrefetchGroupSpec } from './prefetchPlan';
 
+export { startReadiness };
+
 maplibregl.setWorkerUrl(workerUrl);
 
 export { installPoiIcons, maplibregl };

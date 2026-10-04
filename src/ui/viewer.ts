@@ -24,7 +24,9 @@ const LOAD_TIMEOUT_MS = 12000;
 /** 先読みの見込みに持たせる余裕（必要時刻の何割までに読み終わる見込みなら開始するか） */
 const PREFETCH_MARGIN = 0.6;
 /** 回線が極端に遅いときでも、これ以上は待たずに始める */
-const PREFETCH_MAX_WAIT_MS = 12000;
+const PREFETCH_MAX_WAIT_MS = 15000;
+/** 最終画面の地図（B）の見込みに持たせる余裕（着地時刻の何割までに整う見込みなら開始するか） */
+const FINAL_MARGIN = 0.5;
 const SLOW_NOTICE_MS = 6000;
 
 export function nameSizeClass(name: string): string {
@@ -39,6 +41,21 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
   let alive = true;
   let show: Show | null = null;
   let map: MlMap | null = null;
+  /** 演出用の地図（A） */
+  let globeMap: MlMap | null = null;
+  /** 最終画面専用の地図（B） */
+  let finalMap: MlMap | null = null;
+  const removeMaps = () => {
+    for (const mm of new Set([map, globeMap, finalMap])) {
+      try {
+        mm?.remove();
+      } catch {
+        /* ignore */
+      }
+    }
+    globeMap = null;
+    finalMap = null;
+  };
   let marker: Marker | null = null;
   let phase: Phase = 'loading';
   const cleanups: (() => void)[] = [];
@@ -46,6 +63,7 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
 
   // ---- DOM ----
   const mapEl = h('div', { class: 'viewer-map', 'aria-label': `${place.name} の地図`, role: 'region' });
+  const finalEl = h('div', { class: 'viewer-map map-standby', 'aria-label': `${place.name} の地図`, role: 'region' });
   const canvas = h('canvas', { class: 'speedlines', 'aria-hidden': 'true' });
   const bgCanvas = h('canvas', { class: 'fx-canvas', 'aria-hidden': 'true' });
   const fxCanvas = h('canvas', { class: 'fx-canvas', 'aria-hidden': 'true' });
@@ -54,7 +72,7 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
   const callSecond = h('div', { class: 'bubble bubble-second', 'aria-hidden': 'true' }, SHOW.lines.second);
   const poke = h('div', { class: 'poke', 'aria-hidden': 'true' }, svg(POKE_SVG));
   const fx = h('div', { class: 'fx-layer' }, poke, finger, callFirst, callSecond);
-  const stage = h('div', { class: 'stage' }, bgCanvas, mapEl, canvas, fxCanvas, fx);
+  const stage = h('div', { class: 'stage' }, bgCanvas, mapEl, finalEl, canvas, fxCanvas, fx);
 
   const pinInner = h('div', { class: 'pin-inner' }, svg(PIN_SVG));
   const ring = h('div', { class: 'pin-ring', 'aria-hidden': 'true' });
@@ -254,11 +272,7 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
     stopProgress();
     show?.destroy();
     show = null;
-    try {
-      map?.remove();
-    } catch {
-      /* ignore */
-    }
+    removeMaps();
     map = null;
     viewer.classList.add('fallback');
     loading.remove();
@@ -318,33 +332,76 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
     performance.mark('gm:style');
 
     const { maplibregl } = mod;
+    const commonOptions = {
+      attributionControl: false as const,
+      interactive: true,
+      maxPitch: 0,
+      dragRotate: false,
+      pitchWithRotate: false,
+    };
     let m: MlMap;
     try {
+      // 演出用の地図（A）：地球から寄っていく
       m = new maplibregl.Map({
+        ...commonOptions,
         container: mapEl,
         style: { ...style, projection: { type: 'globe' } },
         center: [place.lng, place.lat],
         zoom: 1,
-        attributionControl: false,
-        interactive: true,
-        // 一気に寄るときに通り過ぎる倍率のタイル要求は捨て、最終画面のタイルを先に読む
+        // 一気に寄るときに通り過ぎる倍率のタイル要求は捨てる（最後は B に切り替えるので A は粗くてよい）
         cancelPendingTileRequestsWhileZooming: true,
-        // 読み込んだタイルを演出中に捨てないよう、キャッシュを大きめに
-        maxTileCacheSize: 1200,
-        maxTileCacheZoomLevels: 20,
-        maxPitch: 0,
-        dragRotate: false,
-        pitchWithRotate: false,
       });
     } catch {
       return showFallback('地図を初期化できませんでした。');
     }
     map = m;
-    m.addControl(new maplibregl.AttributionControl({ compact: true }), 'top-left');
-    mod.installPoiIcons(m);
-    for (const hdl of [m.dragPan, m.scrollZoom, m.boxZoom, m.doubleClickZoom, m.keyboard, m.touchZoomRotate]) hdl.disable();
-    m.on('webglcontextlost', () => showFallback('地図の表示が中断されました。'));
-    m.on('moveend', updateRecenter);
+    globeMap = m;
+    const setupMap = (mm: MlMap) => {
+      mm.addControl(new maplibregl.AttributionControl({ compact: true }), 'top-left');
+      mod.installPoiIcons(mm);
+      for (const hdl of [mm.dragPan, mm.scrollZoom, mm.boxZoom, mm.doubleClickZoom, mm.keyboard, mm.touchZoomRotate]) hdl.disable();
+      mm.on('webglcontextlost', () => showFallback('地図の表示が中断されました。'));
+      mm.on('moveend', updateRecenter);
+    };
+    setupMap(m);
+
+    // 最終画面用の地図（B）：最初から最終画面のカメラで裏に置き、演出の間に読み込み・解析を済ませておく。
+    // 着地の瞬間に A から切り替える（Show 側）。作れなかった場合は A だけで続ける。
+    const finalStat = { requested: new Set<string>(), loaded: new Set<string>(), startedAt: performance.now(), styleLoaded: false };
+    try {
+      const B = new maplibregl.Map({
+        ...commonOptions,
+        container: finalEl,
+        style,
+        center: [place.lng, place.lat],
+        zoom: place.zoom,
+        bearing: 0,
+        pitch: 0,
+      });
+      B.setPadding(getPadding());
+      setupMap(B);
+      const tileKey = (e: unknown) => (e as { tile?: { tileID?: { key?: string } } }).tile?.tileID?.key;
+      for (const ev of ['dataloading', 'sourcedataloading'] as const) {
+        B.on(ev, (e) => {
+          const k = tileKey(e);
+          if (k) finalStat.requested.add(k);
+        });
+      }
+      for (const ev of ['data', 'sourcedata'] as const) {
+        B.on(ev, (e) => {
+          const k = tileKey(e);
+          if (k) finalStat.loaded.add(k);
+        });
+      }
+      B.once('load', () => {
+        finalStat.styleLoaded = true;
+        performance.mark('gm:final-load');
+      });
+      finalMap = B;
+    } catch {
+      finalMap = null;
+    }
+    const isFinalReady = () => !finalMap || (finalStat.styleLoaded && finalMap.areTilesLoaded());
 
     marker = new maplibregl.Marker({ element: pinWrap, anchor: 'bottom' }).setLngLat([place.lng, place.lat]).addTo(m);
     pinInner.style.opacity = '0';
@@ -357,30 +414,22 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
       });
     });
     const fontsReady = Promise.race([
-      document.fonts?.load('1em "Dela Gothic One"', `${SHOW.lines.first}${SHOW.lines.second}ズーン`).catch(() => undefined),
+      document.fonts?.load('1em "Dela Gothic One"', `${SHOW.lines.first}${SHOW.lines.second}`).catch(() => undefined),
       new Promise((r) => setTimeout(r, 1500)),
     ]);
-    // 後で必要になるタイル（ズーム各段・最終画面）は裏で読み込み始め、演出開始後も読み続ける。
-    // 演出の前半（「そぉ～れ」→ 回転 →「ここぉ！」）は時間が決まっていて地球しか映らないので、
-    // その間に読み終わる見込みの分だけ、開始前に待つ量を減らせる。
+    // ズーム1・2段目のタイル（A が使う）は裏で先読みする。最終画面は B 自身が読み込む。
     const st = SHOW.stages;
     const prefetcherReady = mod.resolveTileTemplates(style).then((templates) => {
       const around = (zoom: number, r: number) => mod.tileUrlsAround(templates, place.lng, place.lat, zoom, r);
-      const finalUrls = [...around(place.zoom, 1), ...mod.glyphUrls(style)];
-      // 最後の段で通過する中間の倍率（z12・z13）も、最終画面の後に取っておく
-      const passUrls = [...around(13, 0.5), ...around(12, 0.5)];
       const groups = reduced
-        ? [{ urls: finalUrls, needAtMs: 0 }] // 軽減モーションは最初から最終画面
+        ? []
         : [
             { urls: around(st[0].zoom ?? 4.6, 0.5), needAtMs: st[0].start + st[0].move * 0.3 },
             { urls: around(st[1].zoom ?? 10.2, 0.5), needAtMs: st[1].start + st[1].move * 0.3 },
-            { urls: finalUrls, needAtMs: st[2].start + st[2].move * 0.5 },
-            { urls: passUrls, needAtMs: st[2].start + st[2].move * 0.5 },
           ];
-      // 地球の初期表示が読み終わるまでは控えめに（2本）、その後は 6 本で取る
       const p = new mod.TilePrefetcher(groups, 2);
       p.start();
-      void loaded.then(() => p.setConcurrency(6));
+      void loaded.then(() => p.setConcurrency(4));
       cleanups.push(() => p.stop());
       return p;
     });
@@ -392,12 +441,28 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
     if (!ok) return showFallback('地図を読み込めませんでした。通信状況を確認してください。');
     setProgress(0.6, 0.7);
 
-    // 「必要になる時刻までに読み終わる見込み」が立つまで待つ（ここが 60%→100%）
+    // 最終画面（B）の見込み：B のタイルの「読み込み＋解析済み」件数の実測ペースで、
+    // 切り替え時刻（着地）の FINAL_MARGIN 割までに終わる見込みが立てば開始してよい
+    const swapAtMs = reduced ? 0 : SHOW.arrival.start;
+    const finalStatus = (): { ready: boolean; fraction: number } => {
+      if (!finalMap || (finalStat.requested.size > 0 && isFinalReady())) return { ready: true, fraction: 1 };
+      const requested = Math.max(finalStat.requested.size, finalStat.loaded.size, 1);
+      return mod.startReadiness(
+        [{ count: requested, needAtMs: swapAtMs }],
+        finalStat.loaded.size,
+        performance.now() - finalStat.startedAt,
+        FINAL_MARGIN,
+      );
+    };
+
+    // 「必要になる時刻までに整う見込み」が立つまで待つ（ここが 60%→100%）
     const waitStart = performance.now();
     for (;;) {
-      const s = prefetcher.status(PREFETCH_MARGIN);
-      setProgress(0.6 + 0.4 * s.fraction, 0.6 + 0.4 * Math.min(0.99, s.fraction + 0.15));
-      if (s.ready || performance.now() - waitStart > PREFETCH_MAX_WAIT_MS) {
+      const a = prefetcher.status(PREFETCH_MARGIN);
+      const f = finalStatus();
+      const fraction = Math.min(a.fraction, f.fraction);
+      setProgress(0.6 + 0.4 * fraction, 0.6 + 0.4 * Math.min(0.99, fraction + 0.15));
+      if ((a.ready && f.ready) || performance.now() - waitStart > PREFETCH_MAX_WAIT_MS) {
         performance.mark('gm:prefetch-ready');
         break;
       }
@@ -415,7 +480,26 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
       m,
       { stage, canvas, bgCanvas, fxCanvas, finger, callFirst, callSecond, poke, pin: pinInner, ring, card, actions, skip: skipBtn },
       place,
-      { reducedMotion: reduced, getPadding, getTopInset, onPhase: setPhase, sound, soundOn: () => soundOn },
+      {
+        reducedMotion: reduced,
+        getPadding,
+        getTopInset,
+        onPhase: setPhase,
+        sound,
+        soundOn: () => soundOn,
+        finalMap: finalMap ?? undefined,
+        isFinalReady,
+        onSwap: (active) => {
+          // 結果画面の操作・ピンは、いま画面に出ている地図に付け替える
+          map = active;
+          if (active === finalMap) performance.mark('gm:swap');
+          if (marker) {
+            marker.remove();
+            marker.addTo(active);
+          }
+          updateRecenter();
+        },
+      },
     );
     show.play();
     if (import.meta.env.DEV) (window as unknown as { __show?: Show }).__show = show;
@@ -453,11 +537,7 @@ export function mountViewer(root: HTMLElement, place: Place, opts: ViewerOptions
       sound.dispose();
       cleanups.forEach((f) => f());
       marker?.remove();
-      try {
-        map?.remove();
-      } catch {
-        /* ignore */
-      }
+      removeMaps();
       viewer.remove();
     },
     get phase() {
